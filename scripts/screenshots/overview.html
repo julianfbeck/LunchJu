@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LunchJu · Kitchen notebook</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1600px;
+        height: 1000px;
+        overflow: hidden;
+      }
+      body {
+        background: #f1eee7;
+        color: #292b24;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .brand {
+        position: absolute;
+        left: 76px;
+        top: 60px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        font-size: 37px;
+        font-weight: 750;
+        letter-spacing: -1.8px;
+      }
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 47px;
+        background: #ad3e29;
+        color: white;
+        font-size: 31px;
+        letter-spacing: -3px;
+        padding-right: 4px;
+        border-radius: 3px;
+      }
+      .edition {
+        position: absolute;
+        right: 76px;
+        top: 80px;
+        font:
+          13px/1.5 "SFMono-Regular",
+          Consolas,
+          monospace;
+        letter-spacing: 1px;
+        color: #6d7067;
+      }
+      .rule {
+        position: absolute;
+        left: 76px;
+        right: 76px;
+        top: 145px;
+        height: 1px;
+        background: #d4d2c8;
+      }
+      .copy {
+        position: absolute;
+        left: 76px;
+        top: 288px;
+        width: 470px;
+      }
+      .eyebrow {
+        margin: 0 0 27px;
+        font:
+          12px/1.5 "SFMono-Regular",
+          Consolas,
+          monospace;
+        letter-spacing: 1.2px;
+        color: #6d7067;
+      }
+      h1 {
+        margin: 0;
+        font-size: 93px;
+        line-height: 0.99;
+        font-weight: 650;
+        letter-spacing: -5.7px;
+      }
+      h1 span {
+        color: #ad3e29;
+      }
+      .description {
+        margin: 32px 0 0;
+        color: #686c62;
+        font-size: 21px;
+        line-height: 1.65;
+        letter-spacing: -0.3px;
+      }
+      .agent {
+        margin-top: 42px;
+        border-top: 1px solid #d4d2c8;
+        padding-top: 21px;
+        width: 350px;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+      .agent strong {
+        font-weight: 600;
+      }
+      .agent small {
+        display: block;
+        color: #6d7067;
+        font-size: 13px;
+      }
+      figure {
+        position: absolute;
+        width: 270px;
+        margin: 0;
+      }
+      .recipes {
+        left: 608px;
+        top: 248px;
+      }
+      .plan {
+        left: 902px;
+        top: 198px;
+      }
+      .groceries {
+        left: 1196px;
+        top: 248px;
+      }
+      figcaption {
+        margin-bottom: 16px;
+        font:
+          12px/1.5 "SFMono-Regular",
+          Consolas,
+          monospace;
+        letter-spacing: 0.5px;
+        color: #6d7067;
+      }
+      figcaption b {
+        margin-right: 9px;
+        font-weight: 400;
+        color: #ad3e29;
+      }
+      .screen {
+        overflow: hidden;
+        border: 1px solid #c9c8be;
+        border-radius: 18px;
+        background: white;
+        box-shadow: 0 12px 25px #292b240c;
+      }
+      img {
+        display: block;
+        /* Frame the mobile page, excluding Chrome's desktop scrollbar. */
+        width: 103.75%;
+        height: auto;
+      }
+      footer {
+        position: absolute;
+        left: 76px;
+        right: 76px;
+        top: 918px;
+        border-top: 1px solid #d4d2c8;
+        padding-top: 21px;
+        display: flex;
+        justify-content: space-between;
+        color: #6d7067;
+        font-size: 12px;
+      }
+      footer strong {
+        color: #292b24;
+        font-size: 13px;
+        font-weight: 550;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="brand"><span class="mark">lj</span>lunchju</div>
+    <div class="edition">A HOME FOR PEOPLE &amp; THEIR AGENTS</div>
+    <div class="rule"></div>
+    <section class="copy">
+      <p class="eyebrow">THE SHARED KITCHEN NOTEBOOK</p>
+      <h1>One shared<br /><span>kitchen.</span></h1>
+      <p class="description">
+        Plan meals. Keep recipes.<br />Know what's in the pantry.<br />Shop
+        together with Bring.
+      </p>
+      <div class="agent">
+        <strong>Your kitchen, through your agent.</strong
+        ><small>Connect your MCP client. Keep control in the app.</small>
+      </div>
+    </section>
+    <figure class="recipes">
+      <figcaption><b>01</b> RECIPES &amp; PORTIONS</figcaption>
+      <div class="screen">
+        <img
+          src="/docs/screenshots/mobile-recipes.jpg"
+          alt="LunchJu recipe catalog with photos and portion controls"
+        />
+      </div>
+    </figure>
+    <figure class="plan">
+      <figcaption><b>02</b> YOUR WEEK, PLANNED</figcaption>
+      <div class="screen">
+        <img
+          src="/docs/screenshots/mobile-plan.jpg"
+          alt="LunchJu weekly meal plan"
+        />
+      </div>
+    </figure>
+    <figure class="groceries">
+      <figcaption><b>03</b> GROCERIES &amp; BRING</figcaption>
+      <div class="screen">
+        <img
+          src="/docs/screenshots/mobile-groceries.jpg"
+          alt="LunchJu shopping list with Bring integration"
+        />
+      </div>
+    </figure>
+    <footer>
+      <strong>lunchju.juli.sh</strong
+      ><span>Passkeys · PWA · MCP · Cloudflare</span
+      ><span>Actual interface · Sample data · German &amp; English</span>
+    </footer>
+  </body>
+</html>

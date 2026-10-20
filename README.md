@@ -1,5 +1,7 @@
 # LunchJu
 
+[![LunchJu: recipes, weekly meal planning and groceries in one shared kitchen](docs/screenshots/overview.jpg)](https://lunchju.juli.sh)
+
 A shared kitchen built for people and their agents. Plan meals, keep recipes, track pantry stock and food history, and manage groceries from a mobile-first website or an authenticated MCP client. Choose German or English for the interface, with one shared home: Stuttgart.
 
 Live app: [lunchju.juli.sh](https://lunchju.juli.sh)
@@ -15,6 +17,23 @@ Live app: [lunchju.juli.sh](https://lunchju.juli.sh)
 - Shopping lists generated from planned meals. Compatible units are converted, stock is allocated once by meal date and expiry, and repeated generation does not add the same quantities again.
 - Bring connection restricted to Stuttgart and explicit synchronization of shopping additions, changes, completions and removals. Bring article names and quantities use German labels.
 - The same kitchen operations are available to the website and MCP agents, including the full catalog and dietary preferences.
+
+## Screenshots
+
+The real interface with fictional sample data, shown in German. English is also available. Select an image to see it at full size.
+
+|                                                                                     Recipes & portions                                                                                      |                                                                          Weekly meal plan                                                                           |                                                                               Groceries & Bring                                                                               |                                                                             Pantry & expiry dates                                                                              |
+| :-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
+| [<img src="docs/screenshots/mobile-recipes.jpg" width="210" alt="Mobile recipe catalog with food photos, ingredient previews and portion controls" />](docs/screenshots/mobile-recipes.jpg) | [<img src="docs/screenshots/mobile-plan.jpg" width="210" alt="Mobile weekly meal plan with daily meals and a pantry overview" />](docs/screenshots/mobile-plan.jpg) | [<img src="docs/screenshots/mobile-groceries.jpg" width="210" alt="Mobile shopping list with quantities and Bring synchronization" />](docs/screenshots/mobile-groceries.jpg) | [<img src="docs/screenshots/mobile-pantry.jpg" width="210" alt="Mobile pantry with storage locations, quantities and expiry reminders" />](docs/screenshots/mobile-pantry.jpg) |
+
+<details>
+<summary>Desktop: the same kitchen with room for the whole recipe collection</summary>
+
+[![LunchJu desktop recipe catalog with sidebar navigation, food photography and serving controls](docs/screenshots/desktop-kitchen.jpg)](docs/screenshots/desktop-kitchen.jpg)
+
+</details>
+
+Capture sources and refresh instructions: [screenshot preview](scripts/screenshots/README.md).
 
 ## Architecture
 
