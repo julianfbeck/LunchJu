@@ -13,13 +13,13 @@ export const Route = createRootRoute({
         name: "viewport",
         content: "width=device-width,initial-scale=1,viewport-fit=cover",
       },
-      { title: "LunchJu · A little kitchen harmony" },
+      { title: "LunchJu · Kitchen notebook" },
       {
         name: "description",
         content:
           "Your recipes, pantry, meal plans and groceries. One shared kitchen for your household and your agent.",
       },
-      { name: "theme-color", content: "#f6f6ee" },
+      { name: "theme-color", content: "#ffffff" },
     ],
     links: [
       { rel: "stylesheet", href: style },
@@ -39,7 +39,7 @@ export const Route = createRootRoute({
   ),
   notFoundComponent: () => (
     <main className="auth-page">
-      <h1>This page wandered out of the kitchen.</h1>
+      <h1>Page not found</h1>
       <a href="/">Back to LunchJu</a>
     </main>
   ),

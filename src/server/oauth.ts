@@ -28,7 +28,15 @@ function page(body: string, headers?: Headers, status = 200) {
     "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   );
   return new Response(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LunchJu · Agent access</title><style>body{background:#f7f7ef;color:#243e30;font:17px/1.6 system-ui;max-width:620px;margin:60px auto;padding:24px}h1{font-size:34px;letter-spacing:-1px}label{display:block;padding:14px 0}button,a.button{display:inline-block;background:#2c6046;color:white;border:0;border-radius:12px;padding:14px 22px;font:inherit;margin:12px 8px 12px 0;text-decoration:none}a{color:#2c6046}section{border-bottom:1px solid #d8ded1;padding:16px 0}small{color:#687466}input{accent-color:#2c6046}</style><body><p>◒ LUNCHJU / YOUR KITCHEN, CONNECTED</p>${body}</body></html>`,
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LunchJu · Agent access</title><style>
+:root{color-scheme:light;--ink:#272923;--accent:#ad3e29;--line:#e0e1da}
+*{box-sizing:border-box}body{background:#fff;color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:620px;margin:40px auto;padding:24px}
+.brand{display:block;color:var(--ink);font-weight:750;font-size:23px;letter-spacing:-1px;text-decoration:none;border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:40px}
+h1{font-size:30px;line-height:1.2;font-weight:600;letter-spacing:-1px}h2{font-size:19px;font-weight:600}p{color:#6d7067}label{display:flex;align-items:flex-start;gap:10px;padding:14px 0;font-size:14px;border-bottom:1px solid var(--line)}
+button,a.button{display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:4px;padding:12px 18px;font:inherit;font-size:14px;font-weight:500;line-height:1.3;min-height:44px;margin:12px 8px 12px 0;text-decoration:none;cursor:pointer}
+button[value=deny]{background:#fff;color:var(--ink);border-color:#cdd0c4}a{color:var(--accent);text-underline-offset:3px}section{border-bottom:1px solid var(--line);padding:16px 0}small{color:#6d7067;font-size:12px}input{accent-color:var(--accent);width:18px;height:18px;flex-shrink:0;margin:2px 0}input[type=hidden]{display:none}:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+@media(max-width:600px){body{margin:8px auto;padding:24px}h1{font-size:27px}.brand{margin-bottom:30px}}
+</style><body><a class="brand" href="/">lunchju</a>${body}</body></html>`,
     { status, headers: h },
   );
 }
@@ -153,7 +161,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
       issuer = origin(this.env);
     if (!user)
       return page(
-        `<h1>Connect your kitchen.</h1><p>Sign in with your LunchJu passkey, then return here to approve this agent.</p><a class="button" href="/?next=${encodeURIComponent(url.pathname + url.search)}">Sign in with a passkey</a>`,
+        `<h1>Connect an agent</h1><p>Sign in with your LunchJu passkey, then return here to approve this agent.</p><a class="button" href="/?next=${encodeURIComponent(url.pathname + url.search)}">Sign in with a passkey</a>`,
         undefined,
         401,
       );
@@ -193,7 +201,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
           { expirationTtl: 600 },
         );
         return page(
-          `<h1>Give ${escape(details.clientName)} a seat at the table.</h1><p>Signed in as ${escape(user.name)}. This agent can access the single shared home, including its food history and dietary preferences.</p><p><small>Returns to ${escape(details.redirectHost)}. The client name is supplied by the application.</small></p><form method="post"><input type="hidden" name="handle" value="${escape(consent.handle)}"><label><input type="checkbox" name="scope" value="mcp:read" checked> Read recipes, pantry, meals and groceries</label><label><input type="checkbox" name="scope" value="mcp:write" checked> Add and edit recipes, plan meals and sync Bring</label><label><input type="checkbox" name="scope" value="mcp:admin"> Delete items and manage settings allowed by my role</label><label><input type="checkbox" name="persistent" value="yes"> Keep connected until I revoke access</label><small>Access tokens last 15 minutes. Continuing access requires the last checkbox.</small><p><button name="decision" value="approve">Connect agent</button><button name="decision" value="deny">Cancel</button></p></form>`,
+          `<h1>Connect ${escape(details.clientName)}</h1><p>Signed in as ${escape(user.name)}. This agent can access the single shared home, including its food history and dietary preferences.</p><p><small>Returns to ${escape(details.redirectHost)}. The client name is supplied by the application.</small></p><form method="post"><input type="hidden" name="handle" value="${escape(consent.handle)}"><label><input type="checkbox" name="scope" value="mcp:read" checked> Read recipes, pantry, meals and groceries</label><label><input type="checkbox" name="scope" value="mcp:write" checked> Add and edit recipes, plan meals and sync Bring</label><label><input type="checkbox" name="scope" value="mcp:admin"> Delete items and manage settings allowed by my role</label><label><input type="checkbox" name="persistent" value="yes"> Keep connected until I revoke access</label><small>Access tokens last 15 minutes. Continuing access requires the last checkbox.</small><p><button name="decision" value="approve">Connect agent</button><button name="decision" value="deny">Cancel</button></p></form>`,
           consent.headers,
         );
       } catch (error) {
@@ -284,7 +292,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
         { expirationTtl: 600 },
       );
       return page(
-        `<h1>Your connected agents.</h1><a href="/">Back to your kitchen</a>${grants.map((grant) => `<section><h2>${escape(String(grant.metadata?.clientName ?? grant.clientId))}</h2><p>${escape(grant.scope.join(" · "))}</p><form method="post"><input type="hidden" name="csrf" value="${token}"><input type="hidden" name="id" value="${escape(grant.id)}"><button>Revoke access</button></form></section>`).join("") || "<p>No agents connected yet.</p>"}`,
+        `<h1>Connected agents</h1><a href="/">Back to your kitchen</a>${grants.map((grant) => `<section><h2>${escape(String(grant.metadata?.clientName ?? grant.clientId))}</h2><p>${escape(grant.scope.join(" · "))}</p><form method="post"><input type="hidden" name="csrf" value="${token}"><input type="hidden" name="id" value="${escape(grant.id)}"><button>Revoke access</button></form></section>`).join("") || "<p>No agents connected yet.</p>"}`,
         new Headers({
           "Set-Cookie": setCookie(this.env, "lunchju_grants", hashed, 600),
         }),

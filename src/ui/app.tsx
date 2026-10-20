@@ -5,7 +5,6 @@ import {
   startRegistration,
 } from "@simplewebauthn/browser";
 import {
-  Sprout,
   CalendarDays,
   BookOpen,
   PackageOpen,
@@ -59,24 +58,6 @@ const tabs = [
   { id: "settings", name: "Settings", icon: Settings2 },
 ] as const;
 const units = ["g", "kg", "ml", "l", "piece", "tsp", "tbsp", "cup"];
-const foodIcon = (name: string) =>
-  /pasta|spaghetti|noodle/i.test(name)
-    ? "🍝"
-    : /salad|greens|bowl/i.test(name)
-      ? "🥗"
-      : /soup|stew|curry/i.test(name)
-        ? "🍲"
-        : /bread|toast|sandwich/i.test(name)
-          ? "🥪"
-          : /egg|breakfast/i.test(name)
-            ? "🍳"
-            : /rice|risotto/i.test(name)
-              ? "🍚"
-              : /fish|salmon/i.test(name)
-                ? "🐟"
-                : /cake|cookie|dessert/i.test(name)
-                  ? "🍰"
-                  : "🥘";
 
 export function KitchenApp() {
   const client = useQueryClient();
@@ -98,20 +79,17 @@ export function KitchenApp() {
   if (session.isPending)
     return (
       <div className="loading-screen">
-        <Sprout size={44} />
-        <p>Opening your kitchen…</p>
+        <Brand />
+        <p>Loading…</p>
       </div>
     );
   if (session.error)
     return (
       <div className="auth-page">
         <Brand />
-        <h1>Let's get your kitchen ready.</h1>
+        <h1>Unable to load LunchJu</h1>
         <p className="error">{session.error.message}</p>
-        <p>
-          Check the Worker configuration and apply the D1 migrations, then try
-          again.
-        </p>
+        <p>Please try again in a moment.</p>
         <button onClick={() => session.refetch()}>Try again</button>
       </div>
     );
@@ -132,33 +110,24 @@ export function KitchenApp() {
     <div className="app-shell">
       <aside className="sidebar">
         <Brand />
-        <div className="home-label">
-          <span className="home-dot" />
-          {session.data.homeName}
-          <span className="tiny-label">HOME</span>
-        </div>
+        <div className="home-label">{session.data.homeName}</div>
         <nav aria-label="Main navigation">
           {tabs.map((item) => (
             <button
               key={item.id}
               className={tab === item.id ? "nav-item active" : "nav-item"}
+              aria-current={tab === item.id ? "page" : undefined}
               onClick={() => setTab(item.id)}
             >
               <item.icon size={20} />
               {item.name}
-              {item.id === "today" && <span className="nav-today">TODAY</span>}
             </button>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="agent-note">
-            <Bot size={24} />
-            <strong>A little help in the kitchen.</strong>
-            <p>Connect your agent to plan, organize and keep things stocked.</p>
-            <button onClick={() => setTab("settings")}>
-              Set up agent access <ArrowUpRight size={15} />
-            </button>
-          </div>
+          <button className="agent-link" onClick={() => setTab("settings")}>
+            <Bot size={18} /> Agent access <ArrowUpRight size={15} />
+          </button>
           <button className="profile" onClick={() => setTab("settings")}>
             <span className="avatar">
               {session.data.user.name.slice(0, 1).toUpperCase()}
@@ -186,18 +155,14 @@ export function KitchenApp() {
             {session.data.user.name.slice(0, 1).toUpperCase()}
           </button>
         </header>
-        <KitchenContent
-          tab={tab}
-          setTab={setTab}
-          user={session.data.user}
-          notify={setNotice}
-        />
+        <KitchenContent tab={tab} setTab={setTab} notify={setNotice} />
       </main>
       <nav className="bottom-nav" aria-label="Mobile navigation">
         {tabs.map((item) => (
           <button
             key={item.id}
             className={tab === item.id ? "active" : ""}
+            aria-current={tab === item.id ? "page" : undefined}
             onClick={() => setTab(item.id)}
           >
             <item.icon size={22} />
@@ -217,11 +182,10 @@ export function KitchenApp() {
 function Brand() {
   return (
     <a className="brand" href="/" aria-label="LunchJu home">
-      <span className="brand-icon">
-        <Sprout size={25} />
+      <span className="brand-icon" aria-hidden="true">
+        lj
       </span>
-      lunch<span>ju</span>
-      <span className="brand-period">.</span>
+      lunchju
     </a>
   );
 }
@@ -290,42 +254,52 @@ function AuthScreen({
     <div className="auth-layout">
       <section className="auth-story">
         <Brand />
-        <div>
-          <span className="eyebrow">A LITTLE KITCHEN HARMONY</span>
+        <div className="auth-intro">
+          <span className="eyebrow">A SHARED KITCHEN NOTEBOOK</span>
           <h1>
-            Good food.
+            The kitchen
             <br />
-            Less figuring
-            <br />
-            it all out.
+            notebook.
           </h1>
           <p>
-            Your recipes, what's in the fridge, what’s for dinner. One happy
-            home for it all.
+            A place for your recipes, the food you have, and the meals ahead.
           </p>
-          <div className="bowl-art" aria-hidden="true">
-            <span className="art-leaf leaf-one">✦</span>
-            <span className="art-leaf leaf-two">✳</span>
-            <span className="art-food">🥬</span>
-            <div className="bowl">◡</div>
-            <span className="art-tag">
-              <Bot size={16} /> Your agent is welcome, too.
-            </span>
-          </div>
+          <ol className="notebook-index">
+            <li>
+              <span>01</span>
+              <strong>Recipes</strong>
+              <small>The ones worth keeping</small>
+            </li>
+            <li>
+              <span>02</span>
+              <strong>Meal plan</strong>
+              <small>What’s on this week</small>
+            </li>
+            <li>
+              <span>03</span>
+              <strong>Pantry</strong>
+              <small>What you already have</small>
+            </li>
+            <li>
+              <span>04</span>
+              <strong>Groceries</strong>
+              <small>What to pick up</small>
+            </li>
+          </ol>
         </div>
-        <small>MADE FOR YOUR HOME. READY FOR YOUR AGENT.</small>
+        <small>FOR YOUR HOUSEHOLD. OPEN TO YOUR AGENT.</small>
       </section>
       <section className="auth-panel">
         <div className="auth-card">
-          <span className="soft-icon">
-            <KeyRound size={27} />
+          <span className="eyebrow">
+            {setup ? "FIRST-TIME SETUP" : "YOUR KITCHEN"}
           </span>
           <h2>
             {setup
-              ? "Welcome to your kitchen."
+              ? "Set up your home"
               : invite
-                ? "Come on in."
-                : "Nice to see you."}
+                ? "Join your household"
+                : "Sign in"}
           </h2>
           <p>
             {setup
@@ -340,7 +314,7 @@ function AuthScreen({
                 <input
                   name="name"
                   autoComplete="name"
-                  placeholder="What should we call you?"
+                  placeholder="Name"
                   required
                   maxLength={80}
                 />
@@ -352,10 +326,10 @@ function AuthScreen({
                     type="password"
                     autoComplete="off"
                     required
-                    placeholder="From your Worker setup"
+                    placeholder="Setup token"
                   />
                   <small>
-                    Find this in your local .dev.vars or deployment secrets.
+                    Use the private token provided when LunchJu was set up.
                   </small>
                 </Field>
               )}
@@ -378,13 +352,11 @@ function AuthScreen({
             </p>
           )}
           <div className="auth-fineprint">
-            <Leaf size={18} />
+            <KeyRound size={17} />
             <p>
               {setup || invite
                 ? "Your fingerprint, face or device PIN creates your passkey."
                 : "New here? Ask the home owner for an invitation."}
-              <br />
-              No passwords to remember.
             </p>
           </div>
         </div>
@@ -396,12 +368,10 @@ function AuthScreen({
 function KitchenContent({
   tab,
   setTab,
-  user,
   notify,
 }: {
   tab: Tab;
   setTab: (tab: Tab) => void;
-  user: User;
   notify: (value: string) => void;
 }) {
   const client = useQueryClient(),
@@ -455,8 +425,7 @@ function KitchenContent({
   if (query.isPending)
     return (
       <div className="loading-screen">
-        <Sprout size={36} />
-        <p>Gathering the good stuff…</p>
+        <p>Loading your kitchen…</p>
       </div>
     );
   if (query.error)
@@ -483,14 +452,14 @@ function KitchenContent({
   );
   const title =
     tab === "today"
-      ? "A little planning. A lot less guessing."
+      ? "Meal plan"
       : tab === "recipes"
-        ? "The good-food collection."
+        ? "Recipes"
         : tab === "pantry"
-          ? "Know what’s in your kitchen."
+          ? "Pantry"
           : tab === "groceries"
-            ? "A little list. A stocked kitchen."
-            : "Make yourself at home.";
+            ? "Groceries"
+            : "Settings";
   return (
     <>
       <header className="page-heading">
@@ -503,14 +472,14 @@ function KitchenContent({
           <h1>{title}</h1>
           <p>
             {tab === "today"
-              ? `Let's make room for something delicious, ${user.name.split(" ")[0]}.`
+              ? "Plan the week. Keep track of what you eat."
               : tab === "recipes"
-                ? "Old favorites, new discoveries, and everything worth making again."
+                ? "Your collection, ready to cook."
                 : tab === "pantry"
-                  ? "Less food waste. Fewer surprise trips to the shop."
+                  ? "Food in stock, quantities, and expiry dates."
                   : tab === "groceries"
-                    ? "Everything you need, with a little help from your meal plan."
-                    : "One shared kitchen, your people, and a helpful agent."}
+                    ? "A shared shopping list for your household."
+                    : "Your household, connections, and account."}
           </p>
         </div>
         {tab !== "settings" && (
@@ -546,21 +515,15 @@ function KitchenContent({
         <>
           <div className="overview-grid">
             <div className="overview-card">
-              <span className="stat-icon green">
-                <CalendarDays size={22} />
-              </span>
               <div>
                 <strong>
                   {planned.length}
                   <small> meals</small>
                 </strong>
-                <span>on the menu this week</span>
+                <span>planned for this week</span>
               </div>
             </div>
             <button className="overview-card" onClick={() => setTab("pantry")}>
-              <span className="stat-icon amber">
-                <PackageOpen size={22} />
-              </span>
               <div>
                 <strong>
                   {expired.length}
@@ -574,23 +537,19 @@ function KitchenContent({
               className="overview-card"
               onClick={() => setTab("groceries")}
             >
-              <span className="stat-icon lavender">
-                <ShoppingBasket size={22} />
-              </span>
               <div>
                 <strong>
                   {data.groceries.filter((item) => !item.checked).length}
-                  <small> things</small>
+                  <small> items</small>
                 </strong>
-                <span>on your shopping list</span>
+                <span>to buy</span>
               </div>
               <ArrowUpRight size={17} />
             </button>
           </div>
           <div className="section-heading">
             <div>
-              <span className="eyebrow">YOUR WEEK, A LITTLE LIGHTER</span>
-              <h2>What's cooking?</h2>
+              <h2>Weekly plan</h2>
             </div>
             <div className="week-controls">
               <button
@@ -620,6 +579,7 @@ function KitchenContent({
               <button
                 className={`${date === day ? "selected " : ""}${date === baseToday ? "is-today" : ""}`}
                 key={date}
+                aria-pressed={date === day}
                 onClick={() => setDay(date)}
               >
                 <span>{formatDate(date, { weekday: "short" })}</span>
@@ -661,10 +621,9 @@ function KitchenContent({
               .filter((item) => item.date === day)
               .map((meal) => (
                 <article className="meal-card" key={meal.id}>
-                  <div className="food-tile">{foodIcon(meal.name)}</div>
                   <div className="meal-main">
                     <span className="eyebrow">
-                      {meal.slot} {meal.status === "eaten" ? "· ENJOYED" : ""}
+                      {meal.slot} {meal.status === "eaten" ? "· EATEN" : ""}
                     </span>
                     <h3>{meal.name}</h3>
                     <p>
@@ -682,7 +641,7 @@ function KitchenContent({
                           perform(
                             "mark_meal_eaten",
                             { id: meal.id },
-                            "Enjoyed and added to your food history.",
+                            "Added to your food history.",
                           )
                         }
                       >
@@ -715,9 +674,9 @@ function KitchenContent({
           {!data.meals.some((item) => item.date === day) && (
             <Empty
               icon={<Utensils size={30} />}
-              title="A little room for inspiration."
-              text="Pick a recipe for this day, or let your agent put something delicious on the menu."
-              action="Plan your first meal"
+              title="No meals planned"
+              text="Choose a recipe or add a meal for this day."
+              action="Plan a meal"
               onClick={() =>
                 setEditor({ type: "meal", value: { date: day } as Meal })
               }
@@ -727,8 +686,8 @@ function KitchenContent({
             <div>
               <ShoppingBasket size={23} />
               <div>
-                <strong>From meal plan to shopping list.</strong>
-                <p>We'll check your pantry and add just what's missing.</p>
+                <strong>Shop for this week</strong>
+                <p>Add missing ingredients from your planned meals.</p>
               </div>
             </div>
             <button
@@ -742,23 +701,7 @@ function KitchenContent({
                 )
               }
             >
-              Make my grocery list <ArrowUpRight size={16} />
-            </button>
-          </div>
-          <div className="agent-banner">
-            <span className="agent-orbit">
-              <Bot size={28} />
-            </span>
-            <div>
-              <span className="eyebrow">YOUR EXTRA PAIR OF HANDS</span>
-              <h3>“Plan dinners using what’s already in the fridge.”</h3>
-              <p>
-                Give your agent the whole picture, from favorite recipes to the
-                last carrot.
-              </p>
-            </div>
-            <button className="text-button" onClick={() => setTab("settings")}>
-              Connect your agent <ArrowUpRight size={16} />
+              Generate groceries <ArrowUpRight size={16} />
             </button>
           </div>
         </>
@@ -770,16 +713,14 @@ function KitchenContent({
               <Search size={18} />
               <input
                 aria-label="Search recipes"
-                placeholder="Find your next favorite…"
+                placeholder="Search recipes or ingredients"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
-            <span className="muted">
-              {data.recipes.length} recipes, all yours
-            </span>
+            <span className="muted">{data.recipes.length} recipes</span>
           </div>
-          <div className="recipe-grid">
+          <div className="recipe-list">
             {data.recipes
               .filter((recipe) =>
                 `${recipe.name} ${recipe.tags.join(" ")} ${recipe.ingredients.map((i) => i.name).join(" ")}`
@@ -787,20 +728,16 @@ function KitchenContent({
                   .includes(search.toLowerCase()),
               )
               .map((recipe, index) => (
-                <article className="recipe-card" key={recipe.id}>
-                  <button
-                    className={`recipe-art tone-${index % 4}`}
-                    onClick={() => setDetail(recipe)}
-                    aria-label={`View ${recipe.name}`}
-                  >
-                    <span>{foodIcon(recipe.name)}</span>
-                    <i className="art-decoration">✳</i>
-                  </button>
+                <article className="recipe-row" key={recipe.id}>
+                  <span className="recipe-number" aria-hidden="true">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
                   <button
                     className={`favorite ${recipe.favorite ? "is-favorite" : ""}`}
                     aria-label={
                       recipe.favorite ? "Remove favorite" : "Favorite recipe"
                     }
+                    aria-pressed={recipe.favorite}
                     onClick={() =>
                       perform("update_recipe", {
                         ...recipe,
@@ -813,7 +750,7 @@ function KitchenContent({
                       fill={recipe.favorite ? "currentColor" : "none"}
                     />
                   </button>
-                  <div className="recipe-card-body">
+                  <div className="recipe-summary">
                     <div className="tag-row">
                       {recipe.tags.slice(0, 2).map((tag) => (
                         <span className="pill" key={tag}>
@@ -827,9 +764,7 @@ function KitchenContent({
                     >
                       {recipe.name}
                     </button>
-                    <p>
-                      {recipe.description || "Something worth making again."}
-                    </p>
+                    <p>{recipe.description}</p>
                     <div className="recipe-meta">
                       <span>
                         <Clock size={14} />
@@ -856,8 +791,8 @@ function KitchenContent({
           {!data.recipes.length && (
             <Empty
               icon={<BookOpen size={30} />}
-              title="Every good kitchen starts with a recipe."
-              text="Add a family favorite, or ask your connected agent to fill your collection."
+              title="No recipes yet"
+              text="Add a recipe here, or ask your connected agent to add one."
               action="Add a recipe"
               onClick={() => setEditor({ type: "recipe" })}
             />
@@ -871,6 +806,7 @@ function KitchenContent({
               {["All", "Pantry", "Fridge", "Freezer"].map((value) => (
                 <button
                   className={value === location ? "selected" : ""}
+                  aria-pressed={value === location}
                   key={value}
                   onClick={() => setLocation(value)}
                 >
@@ -878,7 +814,7 @@ function KitchenContent({
                 </button>
               ))}
             </div>
-            <span className="muted">{data.pantry.length} things in stock</span>
+            <span className="muted">{data.pantry.length} items in stock</span>
           </div>
           <div className="stock-list">
             {data.pantry
@@ -887,9 +823,6 @@ function KitchenContent({
               )
               .map((item) => (
                 <article className="stock-row" key={item.id}>
-                  <span className="stock-symbol">
-                    <Leaf size={22} />
-                  </span>
                   <div className="stock-name">
                     <strong>{item.name}</strong>
                     <small>
@@ -929,9 +862,9 @@ function KitchenContent({
           {!data.pantry.length && (
             <Empty
               icon={<PackageOpen size={30} />}
-              title="What’s in your kitchen?"
-              text="Add your pantry staples and fridge finds. Your agent can plan around what you already have."
-              action="Add your first item"
+              title="Your pantry is empty"
+              text="Add what you have so meal planning and shopping can account for it."
+              action="Add food"
               onClick={() => setEditor({ type: "pantry" })}
             />
           )}
@@ -947,18 +880,20 @@ function KitchenContent({
             <div className="chips">
               <button
                 className={!showChecked ? "selected" : ""}
+                aria-pressed={!showChecked}
                 onClick={() => setShowChecked(false)}
               >
-                To get{" "}
+                To buy{" "}
                 <span>
                   {data.groceries.filter((item) => !item.checked).length}
                 </span>
               </button>
               <button
                 className={showChecked ? "selected" : ""}
+                aria-pressed={showChecked}
                 onClick={() => setShowChecked(true)}
               >
-                Got it{" "}
+                Purchased{" "}
                 <span>
                   {data.groceries.filter((item) => item.checked).length}
                 </span>
@@ -993,6 +928,7 @@ function KitchenContent({
                     className="grocery-check"
                     disabled={mutation.isPending}
                     aria-label={`${item.checked ? "Uncheck" : "Check off"} ${item.name}`}
+                    aria-pressed={item.checked}
                     onClick={() =>
                       perform("update_grocery", {
                         ...item,
@@ -1005,8 +941,8 @@ function KitchenContent({
                   <div className="stock-name">
                     <strong>{item.name}</strong>
                     <small>
-                      {item.notes || "For something delicious"}
-                      {item.bringUuid ? " · Bring" : ""}
+                      {item.notes}
+                      {item.bringUuid ? `${item.notes ? " · " : ""}Bring` : ""}
                     </small>
                   </div>
                   <span className="stock-quantity">
@@ -1032,11 +968,7 @@ function KitchenContent({
           {!data.groceries.some((item) => item.checked === showChecked) && (
             <Empty
               icon={<ShoppingBasket size={30} />}
-              title={
-                showChecked
-                  ? "Nothing checked off yet."
-                  : "Your list is looking light."
-              }
+              title={showChecked ? "No purchased items" : "Nothing to buy"}
               text={
                 showChecked
                   ? "Purchased items will show up here."
@@ -1049,11 +981,11 @@ function KitchenContent({
           <div className="shopping-note">
             <span className="bring-mark">b!</span>
             <div>
-              <strong>Make it a Bring-along.</strong>
+              <strong>Bring shopping list</strong>
               <p>
                 {data.bring.connected
                   ? "Your shared Bring list is connected. Sync whenever you’re ready."
-                  : "Keep your existing Bring shopping routine. Connect once in Settings."}
+                  : "Connect your Bring list in Settings to sync groceries."}
               </p>
             </div>
           </div>
@@ -1062,17 +994,7 @@ function KitchenContent({
       {tab === "settings" && <Settings data={data} run={run} notify={notify} />}
       {editor && (
         <Modal
-          title={
-            editor.value?.id
-              ? "Make it just right."
-              : editor.type === "recipe"
-                ? "Something worth making."
-                : editor.type === "meal"
-                  ? "Put it on the menu."
-                  : editor.type === "pantry"
-                    ? "A little more in stock."
-                    : "Add it to the list."
-          }
+          title={`${editor.value?.id ? "Edit" : "Add"} ${editor.type === "pantry" ? "food" : editor.type === "grocery" ? "grocery item" : editor.type}`}
           onClose={() => setEditor(null)}
         >
           <EditorForm
@@ -1206,7 +1128,6 @@ function Modal({
       >
         <div className="modal-header">
           <div>
-            <span className="eyebrow">A LITTLE KITCHEN EDIT</span>
             <h2 id="modal-title">{title}</h2>
           </div>
           <button
@@ -1336,7 +1257,7 @@ function EditorForm({
       )}
       {editor.type === "recipe" && (
         <>
-          <Field label="A few words about it">
+          <Field label="Description">
             <textarea
               name="description"
               rows={2}
@@ -1600,8 +1521,8 @@ function EditorForm({
                 name="status"
                 defaultValue={(value as Meal)?.status ?? "planned"}
               >
-                <option value="planned">On the menu</option>
-                <option value="eaten">Already enjoyed</option>
+                <option value="planned">Planned</option>
+                <option value="eaten">Eaten</option>
               </select>
             </Field>
           </div>
@@ -1635,7 +1556,7 @@ function EditorForm({
         )}
         <button className="primary" disabled={busy}>
           <Check size={17} />
-          {busy ? "Saving…" : "Save to my kitchen"}
+          {busy ? "Saving…" : "Save"}
         </button>
       </div>
     </form>
@@ -1664,7 +1585,6 @@ function RecipeDetail({
   return (
     <Modal title={recipe.name} onClose={onClose}>
       <div className="recipe-detail">
-        <div className="detail-art">{foodIcon(recipe.name)}</div>
         <p>{recipe.description}</p>
         <div className="detail-controls">
           <span>
@@ -1696,7 +1616,7 @@ function RecipeDetail({
                 ? "You have everything you need."
                 : `${check.data?.missing.length} ingredients to pick up.`}
         </div>
-        <h3>The good stuff</h3>
+        <h3>Ingredients</h3>
         <ul className="ingredients-list">
           {recipe.ingredients.map((item, index) => (
             <li key={index}>
@@ -1710,7 +1630,7 @@ function RecipeDetail({
             </li>
           ))}
         </ul>
-        <h3>Let’s make it</h3>
+        <h3>Method</h3>
         <ol className="steps">
           {recipe.instructions.map((step, index) => (
             <li key={index}>{step}</li>
@@ -1797,7 +1717,7 @@ function Settings({
       const response = await startRegistration({ optionsJSON: options });
       await request("/api/auth/register/verify", response);
       await client.invalidateQueries({ queryKey: ["passkeys"] });
-      notify("Another way into your kitchen, safely saved.");
+      notify("Passkey added.");
     } catch (error) {
       notify(
         error instanceof Error ? error.message : "Passkey could not be added.",
@@ -1820,7 +1740,7 @@ function Settings({
         <span className="soft-icon">
           <Bot size={26} />
         </span>
-        <h2>Welcome your agent.</h2>
+        <h2>Agent access</h2>
         <p>
           Your agent can browse the whole kitchen, add recipes, plan meals and
           check what you need. You choose its permissions when connecting.
@@ -1859,7 +1779,7 @@ function Settings({
         <span className="soft-icon">
           <KeyRound size={24} />
         </span>
-        <h2>Your keys to the kitchen.</h2>
+        <h2>Passkeys</h2>
         <p>
           Use a passkey on each device or a synced password manager. Keep a
           spare before replacing a device.
@@ -1905,7 +1825,7 @@ function Settings({
       </section>
       <section className="settings-card">
         <span className="bring-mark">b!</span>
-        <h2>Bring your list along.</h2>
+        <h2>Bring</h2>
         <p>
           Connect one shared Bring shopping list. New items and checked-off
           groceries sync both ways when you press Sync.
@@ -2010,7 +1930,7 @@ function Settings({
         <span className="soft-icon">
           <Leaf size={24} />
         </span>
-        <h2>What feels good on your plate?</h2>
+        <h2>Food preferences</h2>
         <p>
           Your agent reads these preferences before planning. Always check
           ingredients against your allergies.
@@ -2033,7 +1953,7 @@ function Settings({
             );
           }}
         >
-          <Field label="How you like to eat">
+          <Field label="Diet">
             <input
               name="diet"
               defaultValue={data.preferences.diet}
@@ -2048,7 +1968,7 @@ function Settings({
               placeholder="e.g. Peanuts, sesame"
             />
           </Field>
-          <Field label="Anything else to know?">
+          <Field label="Notes">
             <textarea
               name="notes"
               rows={3}
@@ -2067,7 +1987,7 @@ function Settings({
           <span className="soft-icon">
             <Users size={24} />
           </span>
-          <h2>Everyone at your table.</h2>
+          <h2>Members</h2>
           <p>
             One home, shared by your people. Invitations can be used once and
             expire after 24 hours.
