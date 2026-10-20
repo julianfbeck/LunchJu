@@ -1,15 +1,13 @@
 # LunchJu
 
-[![LunchJu: recipes, weekly meal planning and groceries in one shared kitchen](docs/screenshots/overview.jpg)](https://lunchju.juli.sh)
+**Shared meal planning for people and agents.**
 
-A shared kitchen built for people and their agents. Plan meals, keep recipes, track pantry stock and food history, and manage groceries from a mobile-first website or an authenticated MCP client. Choose German or English for the interface, with one shared home: Stuttgart.
-
-Live app: [lunchju.juli.sh](https://lunchju.juli.sh)
+Plan meals together, organize recipes, track your pantry and share a grocery list. Use the mobile-first app yourself or connect an agent through MCP to work with the same kitchen. LunchJu runs on Cloudflare, supports German and English, and serves one shared home per deployment.
 
 ## What it does
 
 - One home with multiple invited members. Everyone signs in with a passkey; there are no password accounts.
-- German/English selection on the sign-in screen, mobile header, desktop sidebar and in Settings. Signed-in selections are saved per account and used for the interface and MCP content creation, including existing OAuth connections. Before sign-in, a first-party cookie remembers the browser choice for a year. Existing accounts adopt that cookie choice on the next signed-in visit; new accounts retain the selected registration language. Other members' preferences remain independent. Existing recipe text, notes, enum values and Bring's German list language stay unchanged.
+- German/English selection saved per account, for both the interface and new content created by agents. Existing recipes keep their original language.
 - Installable PWA with standalone display, Android/maskable icons, an Apple touch icon and an offline connection notice. Private kitchen data is never stored in the service worker cache; recipes and changes need a connection.
 - Recipe creation, editing, favorites, shared cookbooks, private photo galleries with selectable covers, cooking tips and pantry availability checks. Filter by cookbook, tag or favourite and sort by name, newest, recently updated or cooking time. Person controls scale ingredients directly in the list and carry the selected count into meal planning.
 - Shared recipe categories with multiple assignments per recipe. Combine category, maximum preparation time and photo filters with cookbook, tag, favorite and text search. Create, rename or remove categories in Recipes, or manage them through MCP.
@@ -18,12 +16,12 @@ Live app: [lunchju.juli.sh](https://lunchju.juli.sh)
 - Dated meal planning and an editable record of meals eaten. Ingredients are snapshotted so deleting a recipe preserves food history.
 - Pantry lots with quantities, units, fridge/freezer/pantry storage and best-before dates.
 - Shopping lists generated from planned meals. Compatible units are converted, stock is allocated once by meal date and expiry, and repeated generation does not add the same quantities again.
-- Bring connection restricted to Stuttgart and explicit synchronization of shopping additions, changes, completions and removals. Bring article names and quantities use German labels.
+- Bring integration restricted to one configured list, with explicit synchronization of shopping additions, changes, completions and removals. Bring article names and quantities use German labels.
 - The same kitchen operations are available to the website and MCP agents, including the full catalog and dietary preferences.
 
 ## Screenshots
 
-The real interface with fictional sample data, shown in German. English is also available. Select an image to see it at full size.
+The real interface with fictional sample data from a local documentation preview, shown in German. English is also available. Select an image to see it at full size.
 
 |                                                                                     Recipes & portions                                                                                      |                                                                          Weekly meal plan                                                                           |                                                                               Groceries & Bring                                                                               |                                                                             Pantry & expiry dates                                                                              |
 | :-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
@@ -70,7 +68,7 @@ npm run db:migrate
 npm run dev
 ```
 
-Open [localhost:3000](http://localhost:3000). Keep `APP_ORIGIN=http://localhost:3000` in `.dev.vars`; the production origin remains in `wrangler.jsonc`. Local D1 and Durable Object state are separate from production.
+Open [localhost:3000](http://localhost:3000). Keep `APP_ORIGIN=http://localhost:3000` in `.dev.vars`. Local D1 and Durable Object state are separate from deployed instances.
 
 On first launch, enter the deployment's `BOOTSTRAP_TOKEN` and create the owner's passkey. The token cannot enroll another owner after setup. The owner can invite more members from Settings. Invitations expire after 24 hours and can be used once. A member can be disabled without removing shared kitchen data.
 
@@ -78,11 +76,18 @@ Add a spare passkey in Settings before replacing your only device. Passkeys are 
 
 ## Deployment
 
-The checked-in Wrangler configuration targets the `lunchju` Worker, the `lunchju.juli.sh` custom domain, its dedicated D1 database and the private `lunchju-images` R2 bucket. Wrangler manages the domain's DNS record and TLS certificate. The `workers.dev` endpoint and preview URLs are disabled. For another Cloudflare account, create a D1 database and replace its ID, domain route and `APP_ORIGIN` in `wrangler.jsonc`. Create the R2 bucket once before the first deployment.
+Deploy your own instance with a Cloudflare Worker, a D1 database, a private R2 bucket and a custom domain. The checked-in `wrangler.jsonc` belongs to an existing installation; replace its resource identifiers and settings with your own before deploying.
+
+1. Sign in to your Cloudflare account and create the storage resources below.
+2. Update `wrangler.jsonc`: set your Worker name, the D1 `database_id`, R2 `bucket_name`, custom-domain route and `APP_ORIGIN` (for example, `https://lunchju.example.com`). Keep the existing binding names so the application can find its resources.
+3. Set `HOME_NAME` and `TIME_ZONE` for your home. For Bring, set `BRING_LIST_ID` and `BRING_LIST_NAME` to your own list's UUID and exact name. Each deployment accepts only that list.
+4. Apply migrations, install independent Worker secrets and deploy.
 
 ```sh
 npx wrangler login
+npx wrangler d1 create lunchju
 npx wrangler r2 bucket create lunchju-images
+# Update wrangler.jsonc with your resources and domain before continuing.
 npm run db:migrate:remote
 npx wrangler secret put BOOTSTRAP_TOKEN
 npx wrangler secret put ENCRYPTION_KEY
@@ -92,16 +97,16 @@ npm run deploy
 
 `ENCRYPTION_KEY` must be 32 random bytes encoded as 64 hexadecimal characters. Store it in your password manager: replacing it makes existing Bring tokens unreadable, requiring reconnection. `.dev.vars`, local runtime state and build output are ignored by Git. Production secrets must be installed with Wrangler; `.dev.vars` is only for local development.
 
-Use a fixed HTTPS `APP_ORIGIN` matching the deployed site. OAuth metadata, redirect validation, CSRF checks and passkey verification use this value. `HOME_NAME`, `TIME_ZONE`, `BRING_LIST_ID` and `BRING_LIST_NAME` are ordinary Wrangler variables. This deployment pins the Stuttgart list by UUID and name and uses `Europe/Berlin`.
+Use a fixed HTTPS `APP_ORIGIN` matching your custom domain. OAuth metadata, redirect validation, CSRF checks and passkey verification use this value. Wrangler manages the domain's DNS record and TLS certificate. The `workers.dev` endpoint and preview URLs are disabled in the checked-in configuration. `HOME_NAME`, `TIME_ZONE`, `BRING_LIST_ID` and `BRING_LIST_NAME` are ordinary Wrangler variables. Some built-in labels and error messages still use the original home name, Stuttgart.
 
 Health endpoint: `GET /api/health`. Do not delete or replace the OAuth Durable Object binding when redeploying; it stores registered clients and grants. Apply future D1 migrations deliberately before deploying code that requires them.
 
 ## Agent connection
 
-Add this streamable HTTP MCP server to an OAuth-capable client:
+After deploying your instance, add its streamable HTTP MCP endpoint to an OAuth-capable client. Replace the example domain with your own:
 
 ```text
-https://lunchju.juli.sh/mcp
+https://lunchju.example.com/mcp
 ```
 
 The client discovers the authorization server, registers a client, and opens consent in your browser. Sign in with a LunchJu passkey, then choose permissions:
@@ -114,7 +119,7 @@ The client discovers the authorization server, registers a client, and opens con
 
 Read access is required. Access tokens last 15 minutes. Check **Keep connected until I revoke access** for renewable agent access; it is off by default. Refresh tokens use the provider's rotation and retry handling. Review and revoke grants at `/oauth/grants`, also linked from Settings. Disabling a member blocks their sessions and future OAuth token validation.
 
-The MCP resource `lunchju://catalog` and `get_catalog` tool return the complete recipe, cookbook, source, pantry, meal, grocery and preferences catalog, including each recipe’s `cookbookIds`, `images` metadata, structured `steps` and attributed `comments`. Tool names and JSON schemas are registered from `src/server/operations.ts`; UI requests call that same implementation. Deletion and integration administration require explicit admin scope. Owner-only checks still apply to an agent acting for a member.
+The MCP resource `lunchju://catalog` and `get_catalog` tool return the complete recipe, cookbook, category, source, pantry, meal, grocery and preferences catalog, including each recipe’s `cookbookIds`, `categoryIds`, `images` metadata, structured `steps` and attributed `comments`. Tool names and JSON schemas are registered from `src/server/operations.ts`; UI requests call that same implementation. Deletion and integration administration require explicit admin scope. Owner-only checks still apply to an agent acting for a member.
 
 The catalog's `contentLanguage` (`de` or `en`) and `home.locale` reflect the authenticated account's current selection. Agents must read `get_catalog` or `get_language` before creating content and write new cookbook names, recipe titles, ingredient names, preparation steps, tags, cooking notes, tips and image descriptions in that language. Initialization instructions, tool descriptions and tool responses include the current language. OAuth identity determines the preference; an agent does not need a browser cookie, and existing tokens continue to work after a language change. `set_language` (`mcp:write`) changes only the calling account's preference. It does not translate stored recipes. Ingredient matching remains based on stored names; changing language does not add cross-language synonym matching.
 
@@ -122,7 +127,7 @@ The catalog's `contentLanguage` (`de` or `en`) and `home.locale` reflect the aut
 
 Use **Rezept fotografieren / Photograph recipe** directly in Recipes to open the phone's camera, or **Foto auswählen / Choose photo** to pick an existing image. Check the preview, optionally select a recipe to supplement, then press **Für den Agenten speichern / Save for your agent**. Supporting mobile browsers request the rear camera; desktop browsers offer their file picker. Camera and library photos are decoded locally, resized to at most 2560 pixels on the longest edge and re-encoded without the original EXIF/location metadata. Input photos may be up to 40 MiB; the saved private image stays within the 5 MiB upload limit. Formats such as HEIC depend on browser decoding support; use JPEG if your browser cannot read one.
 
-The source inbox also accepts video links and additional text. Saved sources persist until processed or deleted. Every new authenticated MCP connection receives fresh import counts and instructions to check `list_recipe_sources`, inspect photos with `get_recipe_source_image`, extract ingredients and steps, avoid duplicate recipes and assign suitable existing cookbooks. The `lunchju://recipe-inbox` resource exposes ready pending sources, sources needing clarification, the current content language and whether the connection can import. Connecting or reading never marks work complete. Read-only connections report the queue; importing requires write scope. Finished sources are excluded from the pending queue, and incomplete image uploads remain unavailable until their image is saved.
+The source inbox also accepts video links and additional text. Saved sources persist until processed or deleted. Every new authenticated MCP connection receives fresh import counts and instructions to check `list_recipe_sources`, inspect photos with `get_recipe_source_image`, extract ingredients and steps, avoid duplicate recipes and assign suitable existing cookbooks and categories. The `lunchju://recipe-inbox` resource exposes ready pending sources, sources needing clarification, the current content language and whether the connection can import. Connecting or reading never marks work complete. Read-only connections report the queue; importing requires write scope. Finished sources are excluded from the pending queue, and incomplete image uploads remain unavailable until their image is saved.
 
 Processing runs in your connected agent when it follows these MCP server instructions; saving alone does not launch a server-side model or background job. **Agentenauftrag kopieren / Copy agent prompt** remains available to request an import explicitly with clients that do not act on connection instructions. Video access depends on that agent's browser, video or transcript tools and the platform's access restrictions. LunchJu does not fetch, embed, transcribe or run OCR on sources. If a video cannot be read, add a transcript, notes or a screenshot instead. Source images use the same private R2 bucket and authenticated access as recipe photos; direct agent uploads support JPG, PNG and WebP up to 5 MiB.
 
@@ -198,7 +203,7 @@ An optional `AGENT_API_KEY` Worker secret provides full owner access for a trust
 
 ## Bring
 
-The native Worker client ports the HTTP protocol from the local `bring-cli` implementation. Set `BRING_API_KEY` to that client's application key as a Worker secret. The home owner connects their Bring email/password in Einstellungen; LunchJu automatically selects the configured Stuttgart list. Both its UUID and name must match, and all other lists are excluded. LunchJu sends the password to Bring for login and never persists it. Access and refresh tokens are stored with AES-GCM authenticated encryption in D1.
+The native Worker client ports the HTTP protocol from `bring-cli`; see `THIRD_PARTY_NOTICES.md` for source details. Set `BRING_API_KEY` to that client's application key as a Worker secret. The home owner connects their Bring email/password in Settings; LunchJu automatically selects the list configured in `BRING_LIST_ID` and `BRING_LIST_NAME`. Both its UUID and name must match, and all other lists are excluded. LunchJu sends the password to Bring for login and never persists it. Access and refresh tokens are stored with AES-GCM authenticated encryption in D1.
 
 Press **Bring abgleichen** in Einkaufen or Einstellungen, or call `bring_sync`. A database lease prevents overlapping integration operations. Stable item IDs and queued removals allow retries without generating new remote IDs. Bring failures leave local groceries saved and report a sanitized error.
 

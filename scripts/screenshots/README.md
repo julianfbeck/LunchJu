@@ -1,6 +1,6 @@
 # README screenshots
 
-The images in `docs/screenshots/` are captures of LunchJu's production React components and stylesheet. The overview combines three of those captures with a custom branded layout; it does not recreate the application UI. Its editable composition is in `overview.html`. The frames crop Chrome's desktop scrollbar from the mobile captures.
+The images in `docs/screenshots/` are captures of LunchJu's production React components and stylesheet. The frames crop Chrome's desktop scrollbar from the mobile captures. The README uses these local sample-data captures without linking to a personal deployment.
 
 All displayed accounts, recipes, meals, stock and grocery items are fictional. The Bring status is sample data. The preview neither reads production data nor connects to Cloudflare or Bring. It runs on loopback with a separate Vite configuration and no `.dev.vars` loading. Mutation requests are rejected.
 
@@ -15,8 +15,9 @@ Open [the screenshot preview](http://127.0.0.1:4310) in your usual Chrome profil
 
 1. Set a mobile viewport of **430 × 932**. Capture **Rezepte**, **Plan**, **Einkaufsliste** and **Vorräte** into their corresponding `docs/screenshots/mobile-*.jpg` files.
 2. Set a desktop viewport of **1440 × 1000**, open **Rezepte** and save `docs/screenshots/desktop-kitchen.jpg`.
-3. Open [the custom overview](http://127.0.0.1:4310/overview) at **1600 × 1000** and save `docs/screenshots/overview.jpg`. Its composition uses the saved mobile captures directly.
-4. Inspect every image, check that the photo previews have loaded, and restore your normal browser viewport. Stop the server with Ctrl+C.
+3. Inspect every image, check that the photo previews have loaded, and restore your normal browser viewport. Stop the server with Ctrl+C.
+
+An optional [custom overview](http://127.0.0.1:4310/overview) combines three saved mobile captures in a branded layout at **1600 × 1000**. Its editable composition is `overview.html`; it uses the tagline “Shared meal planning for people and agents” and contains no deployment URL. The README currently uses the individual captures instead of an overview banner.
 
 These viewport sizes describe the CSS layout. The browser integration may scale the exported JPEG to the display size. Keep each image's original aspect ratio when embedding it.
 
