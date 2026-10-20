@@ -8,6 +8,7 @@ import {
   hasRecipeInstructions,
   recipeInstructionsMessage,
   cookbookSchema,
+  categorySchema,
   pantrySchema,
   mealSchema,
   grocerySchema,
@@ -73,6 +74,7 @@ import {
   MAX_IMAGE_BASE64,
 } from "./images";
 import { HttpError, now, type Env, type Access } from "./types";
+import { saveCategory, setRecipeCategories } from "./categories";
 
 type Context = { env: Env; access: Access };
 function operation<S extends z.ZodType>(
@@ -120,7 +122,7 @@ export const operations = {
     async (input, c) => loadRecipe(c.env, input.id),
   ),
   list_recipes: operation(
-    "Sucht und filtert Rezepte nach Kochbuch (cookbookId, unfiled für nicht zugeordnete), Schlagwort und Favoriten. sort: favorites, name, newest, updated oder quickest. Gibt vollständige Rezepte mit Bildern und Tipps zurück.",
+    "Sucht und kombiniert Filter: categoryId und cookbookId (jeweils unfiled für nicht zugeordnete), maxMinutes (null ohne Zeitgrenze), image (any/with/without), Schlagwort und Favoriten. sort: favorites, name, newest, updated oder quickest. Gibt vollständige Rezepte mit Bildern, Kategorien und Tipps zurück.",
     "mcp:read",
     recipeFilterSchema,
     async (input, c) => {
@@ -129,6 +131,55 @@ export const operations = {
         recipes: filterRecipes(data.recipes, input, data.contentLanguage),
       };
     },
+  ),
+  list_categories: operation(
+    "Liest gemeinsame Rezeptkategorien und ihre Rezeptanzahl. Beim Rezeptimport passende bestehende Kategorien verwenden; neue Namen in contentLanguage schreiben.",
+    "mcp:read",
+    empty,
+    async (_, c) => {
+      const data = await catalog(c.env, c.access);
+      return {
+        categories: data.categories.map((category) => ({
+          ...category,
+          recipeCount: data.recipes.filter((recipe) =>
+            recipe.categoryIds.includes(category.id),
+          ).length,
+        })),
+      };
+    },
+  ),
+  create_category: operation(
+    "Erstellt eine gemeinsame Rezeptkategorie in contentLanguage.",
+    "mcp:write",
+    categorySchema,
+    async (input, c) => saveCategory(c.env, input),
+  ),
+  update_category: operation(
+    "Benennt eine Kategorie um und behält alle Rezeptzuordnungen.",
+    "mcp:write",
+    categorySchema.extend({ id }),
+    async ({ id, ...input }, c) => saveCategory(c.env, input, id, true),
+  ),
+  delete_category: operation(
+    "Entfernt eine Kategorie samt Zuordnungen. Rezepte, Kochbücher, Bilder und Tipps bleiben erhalten.",
+    "mcp:admin",
+    target,
+    async (input, c) => {
+      const deleted = await c.env.DB.prepare(
+        "DELETE FROM categories WHERE id=? RETURNING id",
+      )
+        .bind(input.id)
+        .first();
+      if (!deleted) throw new HttpError(404, "Kategorie nicht gefunden.");
+      return { deleted: input.id };
+    },
+  ),
+  set_recipe_categories: operation(
+    "Ersetzt die Kategorien eines Rezepts. categoryIds=[] entfernt nur die Kategoriezuordnungen. Weitere Rezeptinhalte und Kochbücher bleiben erhalten.",
+    "mcp:write",
+    z.object({ recipeId: id, categoryIds: z.array(id).max(30) }),
+    async (input, c) =>
+      setRecipeCategories(c.env, input.recipeId, input.categoryIds),
   ),
   list_cookbooks: operation(
     "Liest alle gemeinsamen Kochbücher mit Beschreibung und Rezeptanzahl.",

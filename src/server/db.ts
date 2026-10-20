@@ -5,6 +5,7 @@ import {
   type Catalog,
   type Recipe,
   type Cookbook,
+  type Category,
   type RecipeComment,
   type RecipeImage,
   type PantryItem,
@@ -38,6 +39,7 @@ export function recipe(row: Row): Recipe {
     imageAlt: String(row.image_alt ?? ""),
     images: [],
     cookbookIds: [],
+    categoryIds: [],
     comments: [],
     name: String(row.name),
     description: String(row.description),
@@ -70,6 +72,14 @@ export function cookbook(row: Row): Cookbook {
     updatedAt: String(row.updated_at),
   };
 }
+export function category(row: Row): Category {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
 function comment(row: Row): RecipeComment {
   return {
     id: String(row.id),
@@ -82,12 +92,12 @@ function comment(row: Row): RecipeComment {
     updatedAt: String(row.updated_at),
   };
 }
-// Load relations in three bounded queries for the entire catalog, avoiding a
+// Load relations in bounded queries for the entire catalog, avoiding a
 // separate set of SQL requests for every recipe.
 async function recipeRelations(env: Env, recipes: Recipe[], recipeId?: string) {
   const where = recipeId ? " WHERE recipe_id=?" : "";
   const values = recipeId ? [recipeId] : [];
-  const [images, memberships, comments] = await Promise.all([
+  const [images, memberships, comments, categories] = await Promise.all([
     rows(
       env.DB,
       `SELECT * FROM recipe_images${where} ORDER BY created_at,id`,
@@ -99,6 +109,7 @@ async function recipeRelations(env: Env, recipes: Recipe[], recipeId?: string) {
       `SELECT c.*,u.name AS author_name FROM recipe_comments c JOIN users u ON u.id=c.author_id${recipeId ? " WHERE c.recipe_id=?" : ""} ORDER BY c.created_at,c.id`,
       ...values,
     ),
+    rows(env.DB, `SELECT * FROM recipe_categories${where}`, ...values),
   ]);
   const byId = new Map(recipes.map((recipe) => [recipe.id, recipe]));
   for (const row of images) {
@@ -114,6 +125,8 @@ async function recipeRelations(env: Env, recipes: Recipe[], recipeId?: string) {
     byId.get(String(row.recipe_id))?.cookbookIds.push(String(row.cookbook_id));
   for (const row of comments)
     byId.get(String(row.recipe_id))?.comments.push(comment(row));
+  for (const row of categories)
+    byId.get(String(row.recipe_id))?.categoryIds.push(String(row.category_id));
   return recipes;
 }
 export function pantryItem(row: Row): PantryItem {
@@ -195,6 +208,7 @@ export async function catalog(
     language,
     cookbooks,
     sources,
+    categories,
   ] = await Promise.all([
     rows(env.DB, "SELECT * FROM recipes ORDER BY favorite DESC,name"),
     rows(
@@ -209,10 +223,12 @@ export async function catalog(
     accountLanguage(env, access.user.id),
     rows(env.DB, "SELECT * FROM cookbooks ORDER BY name COLLATE NOCASE,id"),
     listRecipeSources(env),
+    rows(env.DB, "SELECT * FROM categories ORDER BY name COLLATE NOCASE,id"),
   ]);
   return {
     recipes: await recipeRelations(env, recipes.map(recipe)),
     cookbooks: cookbooks.map(cookbook),
+    categories: categories.map(category),
     sources,
     pantry: pantry.map(pantryItem),
     meals: meals.map(meal),
@@ -269,6 +285,30 @@ export async function saveRecipe(
       durationMinutes: null,
     }));
   const writes: D1PreparedStatement[] = [];
+  if (data.categoryIds !== undefined) {
+    const ids = [...new Set(data.categoryIds)];
+    if (ids.length) {
+      const found = await rows(
+        env.DB,
+        `SELECT id FROM categories WHERE id IN (${ids.map(() => "?").join(",")})`,
+        ...ids,
+      );
+      if (found.length !== ids.length)
+        throw new HttpError(404, "Kategorie nicht gefunden.");
+    }
+    writes.push(
+      env.DB.prepare("DELETE FROM recipe_categories WHERE recipe_id=?").bind(
+        id,
+      ),
+    );
+    writes.push(
+      ...ids.map((categoryId) =>
+        env.DB.prepare(
+          "INSERT INTO recipe_categories(recipe_id,category_id) VALUES (?,?)",
+        ).bind(id, categoryId),
+      ),
+    );
+  }
   if (data.cookbookIds !== undefined) {
     const ids = [...new Set(data.cookbookIds)];
     if (ids.length) {

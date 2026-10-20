@@ -10,7 +10,7 @@ import {
   Plus,
   Users,
 } from "lucide-react";
-import type { Recipe, Cookbook } from "../shared";
+import type { Recipe, Cookbook, Category } from "../shared";
 import { scaleIngredients } from "../scaling";
 import { formatNumber, formatQuantity } from "../locale";
 export function personCount(value: string) {
@@ -79,6 +79,7 @@ export function ServingsControl({
 export function RecipeList({
   recipes,
   cookbooks = [],
+  categories = [],
   busy,
   onOpen,
   onPlan,
@@ -87,6 +88,7 @@ export function RecipeList({
 }: {
   recipes: Recipe[];
   cookbooks?: Cookbook[];
+  categories?: Category[];
   busy: boolean;
   onOpen: (recipe: Recipe, servings: number) => void;
   onPlan: (recipe: Recipe, servings: number) => void;
@@ -100,6 +102,7 @@ export function RecipeList({
           key={recipe.id}
           recipe={recipe}
           cookbooks={cookbooks}
+          categories={categories}
           busy={busy}
           onOpen={onOpen}
           onPlan={onPlan}
@@ -113,6 +116,7 @@ export function RecipeList({
 function RecipeRow({
   recipe,
   cookbooks,
+  categories,
   busy,
   onOpen,
   onPlan,
@@ -121,6 +125,7 @@ function RecipeRow({
 }: {
   recipe: Recipe;
   cookbooks: Cookbook[];
+  categories: Category[];
   busy: boolean;
   onOpen: (recipe: Recipe, servings: number) => void;
   onPlan: (recipe: Recipe, servings: number) => void;
@@ -184,6 +189,14 @@ function RecipeRow({
             {cookbooks
               .filter((book) => recipe.cookbookIds.includes(book.id))
               .map((book) => book.name)
+              .join(" · ")}
+          </p>
+        )}
+        {!!recipe.categoryIds?.length && (
+          <p className="recipe-book-names recipe-category-names">
+            {categories
+              .filter((category) => recipe.categoryIds.includes(category.id))
+              .map((category) => category.name)
               .join(" · ")}
           </p>
         )}

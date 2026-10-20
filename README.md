@@ -12,6 +12,7 @@ Live app: [lunchju.juli.sh](https://lunchju.juli.sh)
 - German/English selection on the sign-in screen, mobile header, desktop sidebar and in Settings. Signed-in selections are saved per account and used for the interface and MCP content creation, including existing OAuth connections. Before sign-in, a first-party cookie remembers the browser choice for a year. Existing accounts adopt that cookie choice on the next signed-in visit; new accounts retain the selected registration language. Other members' preferences remain independent. Existing recipe text, notes, enum values and Bring's German list language stay unchanged.
 - Installable PWA with standalone display, Android/maskable icons, an Apple touch icon and an offline connection notice. Private kitchen data is never stored in the service worker cache; recipes and changes need a connection.
 - Recipe creation, editing, favorites, shared cookbooks, private photo galleries with selectable covers, cooking tips and pantry availability checks. Filter by cookbook, tag or favourite and sort by name, newest, recently updated or cooking time. Person controls scale ingredients directly in the list and carry the selected count into meal planning.
+- Shared recipe categories with multiple assignments per recipe. Combine category, maximum preparation time and photo filters with cookbook, tag, favorite and text search. Create, rename or remove categories in Recipes, or manage them through MCP.
 - A shared source inbox for Instagram Reels, TikTok, YouTube Shorts, additional text and private images. Link a source to an existing recipe or ask your MCP agent to create one. The agent extracts the content using its own tools; LunchJu stores the source and tracks the result.
 - Individually editable preparation cards with optional titles and durations, reordering and a cooking mode with progress and previous/next controls.
 - Dated meal planning and an editable record of meals eaten. Ingredients are snapshotted so deleting a recipe preserves food history.
@@ -145,6 +146,14 @@ Recipe `steps` are ordered objects with `title`, `description` and optional `dur
 ```
 
 The recipe editor supports adding, removing and moving individual cards. Cooking mode shows one card at a time with optional completion marks; progress lasts for the current view. Durations are guidance, without a running timer. Existing recipes and clients using `instructions: string[]` remain supported: descriptions and legacy instructions stay synchronized, and omitted structured steps retain their titles and durations when instructions have not changed. Cooking times and step descriptions do not automatically scale with servings.
+
+### Categories and filters
+
+Use **Kategorien verwalten / Manage categories** in Recipes to create, rename or delete shared categories. Assign one or several categories in the recipe editor or directly in recipe details. Six editable German starter categories are included: Frühstück, Hauptgerichte, Suppen & Eintöpfe, Salate, Snacks, and Desserts & Backen. Existing recipes start uncategorized; the migration does not infer classifications or change recipe content. Deleting a category preserves recipes, photos, cookbooks and tips. Category names are stored content, so switching interface language does not translate them.
+
+The category dropdown includes **Ohne Kategorie / Uncategorized**. Combine it with maximum preparation time, recipes with/without photos, cookbook, tag, favorites and text search; every selected condition must match. The visible result count updates immediately, and **Filter zurücksetzen / Reset filters** clears the complete selection. These filters use the same implementation in the browser and `list_recipes`.
+
+MCP tools: `list_categories` requires read scope, `create_category`, `update_category` and `set_recipe_categories` require write scope, and `delete_category` requires admin scope. Recipes and the catalog include `categoryIds`; the catalog also includes `categories`. Recipe creation and editing accept optional `categoryIds`: omission preserves current memberships on update, while `[]` clears them. Agent connection instructions include assigning imports to suitable existing categories. `list_recipes` accepts `categoryId` (UUID, `unfiled` or empty), `maxMinutes` (positive integer up to 2880, or `null` without a limit), and `image` (`any`, `with`, `without`) alongside its existing filters.
 
 ## Install the app
 

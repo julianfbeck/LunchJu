@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { BookOpen, ImagePlus, Pencil, Trash2 } from "lucide-react";
-import type { Cookbook, Recipe, RecipeComment, User } from "../shared";
+import type {
+  Cookbook,
+  Category,
+  Recipe,
+  RecipeComment,
+  User,
+} from "../shared";
 import type { RecipeFilters } from "../recipes";
+import { recipeFilterSchema } from "../recipes";
 import { action, ApiError } from "./api";
 import { useI18n } from "./language";
 
@@ -50,12 +57,14 @@ export function RecipeFiltersBar({
   filters,
   setFilters,
   cookbooks,
+  categories = [],
   recipes,
   count,
 }: {
   filters: RecipeFilters;
   setFilters: (filters: RecipeFilters) => void;
   cookbooks: Cookbook[];
+  categories?: Category[];
   recipes: Recipe[];
   count: number;
 }) {
@@ -65,6 +74,29 @@ export function RecipeFiltersBar({
   );
   return (
     <div className="recipe-filters">
+      <label>
+        {t("Kategorie")}
+        <select
+          value={filters.categoryId}
+          onChange={(event) =>
+            setFilters({ ...filters, categoryId: event.target.value })
+          }
+        >
+          <option value="">{t("Alle Kategorien")}</option>
+          <option value="unfiled">{t("Ohne Kategorie")}</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name} (
+              {
+                recipes.filter((recipe) =>
+                  recipe.categoryIds.includes(category.id),
+                ).length
+              }
+              )
+            </option>
+          ))}
+        </select>
+      </label>
       <label>
         {t("Kochbuch")}
         <select
@@ -127,6 +159,44 @@ export function RecipeFiltersBar({
           ))}
         </select>
       </label>
+      <label>
+        {t("Zubereitungszeit")}
+        <select
+          aria-label={t("Maximale Zubereitungszeit")}
+          value={filters.maxMinutes ?? ""}
+          onChange={(event) =>
+            setFilters({
+              ...filters,
+              maxMinutes: event.target.value
+                ? Number(event.target.value)
+                : null,
+            })
+          }
+        >
+          <option value="">{t("Beliebige Dauer")}</option>
+          {[15, 30, 45, 60, 90].map((minutes) => (
+            <option key={minutes} value={minutes}>
+              {t("Bis {0} Min.", minutes)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {t("Rezeptbilder")}
+        <select
+          value={filters.image}
+          onChange={(event) =>
+            setFilters({
+              ...filters,
+              image: event.target.value as RecipeFilters["image"],
+            })
+          }
+        >
+          <option value="any">{t("Mit und ohne Bild")}</option>
+          <option value="with">{t("Nur mit Bild")}</option>
+          <option value="without">{t("Nur ohne Bild")}</option>
+        </select>
+      </label>
       <label className="checkbox-filter">
         <input
           type="checkbox"
@@ -140,6 +210,17 @@ export function RecipeFiltersBar({
       <span className="muted recipe-result-count" aria-live="polite">
         {t("{0} von {1} Rezepten", count, recipes.length)}
       </span>
+      <button
+        type="button"
+        className="text-button"
+        disabled={
+          JSON.stringify(filters) ===
+          JSON.stringify(recipeFilterSchema.parse({}))
+        }
+        onClick={() => setFilters(recipeFilterSchema.parse({}))}
+      >
+        {t("Filter zurücksetzen")}
+      </button>
     </div>
   );
 }

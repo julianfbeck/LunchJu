@@ -1,6 +1,11 @@
 import { useI18n, LanguageSelector } from "./language";
 import { RecipeSources } from "./recipe-sources";
 import {
+  CategoryManager,
+  CategoryPicker,
+  RecipeCategories,
+} from "./recipe-categories";
+import {
   RecipeInstructions,
   RecipeStepsEditor,
   emptyStep,
@@ -526,6 +531,17 @@ function KitchenContent({
         t("Entfernt."),
       );
   }
+  useEffect(() => {
+    const categories = query.data?.categories;
+    if (!categories) return;
+    setRecipeFilters((current) =>
+      current.categoryId &&
+      current.categoryId !== "unfiled" &&
+      !categories.some((category) => category.id === current.categoryId)
+        ? { ...current, categoryId: "" }
+        : current,
+    );
+  }, [query.data?.categories]);
   if (query.isPending)
     return (
       <div className="loading-screen">
@@ -904,6 +920,7 @@ function KitchenContent({
             filters={recipeFilters}
             setFilters={setRecipeFilters}
             cookbooks={data.cookbooks}
+            categories={data.categories}
             recipes={data.recipes}
             count={filterRecipes(data.recipes, recipeFilters, language).length}
           />
@@ -916,6 +933,24 @@ function KitchenContent({
             onOpen={(recipe) => {
               setDetailServings(recipe.servings);
               setDetail(recipe);
+            }}
+          />
+          <CategoryManager
+            categories={data.categories}
+            recipes={data.recipes}
+            onChanged={async () => {
+              await client.invalidateQueries({ queryKey: ["catalog"] });
+              const categories =
+                client.getQueryData<Data>(["catalog"])?.categories ?? [];
+              setRecipeFilters((current) =>
+                current.categoryId &&
+                current.categoryId !== "unfiled" &&
+                !categories.some(
+                  (category) => category.id === current.categoryId,
+                )
+                  ? { ...current, categoryId: "" }
+                  : current,
+              );
             }}
           />
           <CookbookManager
@@ -937,6 +972,7 @@ function KitchenContent({
           <RecipeList
             recipes={filterRecipes(data.recipes, recipeFilters, language)}
             cookbooks={data.cookbooks}
+            categories={data.categories}
             busy={mutation.isPending}
             onOpen={(recipe, servings) => {
               setDetailServings(servings);
@@ -1282,6 +1318,7 @@ function KitchenContent({
             data.recipes.find((recipe) => recipe.id === detail.id) ?? detail
           }
           cookbooks={data.cookbooks}
+          categories={data.categories}
           user={data.user}
           initialServings={detailServings}
           onSaved={(recipe) => {
@@ -1467,6 +1504,9 @@ function EditorForm({
     [cookbookIds, setCookbookIds] = useState<string[]>(
       (value as Recipe)?.cookbookIds ?? [],
     ),
+    [categoryIds, setCategoryIds] = useState<string[]>(
+      (value as Recipe)?.categoryIds ?? [],
+    ),
     [error, setError] = useState("");
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1488,6 +1528,7 @@ function EditorForm({
           .filter(Boolean),
         favorite: (value as Recipe)?.favorite ?? false,
         cookbookIds,
+        categoryIds,
         steps,
         instructions: steps.map((step) => step.description),
         scalingNotes: str("scalingNotes"),
@@ -1577,6 +1618,11 @@ function EditorForm({
             cookbooks={data.cookbooks}
             selected={cookbookIds}
             onChange={setCookbookIds}
+          />
+          <CategoryPicker
+            categories={data.categories}
+            selected={categoryIds}
+            onChange={setCategoryIds}
           />
           <Field label={t("Beschreibung")}>
             <textarea
@@ -2021,6 +2067,7 @@ function RecipeDetail({
   initialServings,
   onSaved,
   cookbooks,
+  categories,
   user,
   onClose,
   onPlan,
@@ -2030,6 +2077,7 @@ function RecipeDetail({
   initialServings: number;
   onSaved: (recipe: Recipe) => void;
   cookbooks: Catalog["cookbooks"];
+  categories: Catalog["categories"];
   user: User;
   onClose: () => void;
   onPlan: (servings: number) => void;
@@ -2056,6 +2104,11 @@ function RecipeDetail({
     <Modal title={recipe.name} onClose={onClose}>
       <div className="recipe-detail">
         <RecipeGallery recipe={recipe} onSaved={onSaved} />
+        <RecipeCategories
+          recipe={recipe}
+          categories={categories}
+          onSaved={onSaved}
+        />
         <RecipeCookbooks
           recipe={recipe}
           cookbooks={cookbooks}
