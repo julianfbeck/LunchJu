@@ -27,6 +27,10 @@ export async function rows(db: D1Database, sql: string, ...values: unknown[]) {
 export function recipe(row: Row): Recipe {
   return {
     id: String(row.id),
+    imageUrl: row.image_key
+      ? `/api/recipes/${row.id}/image?v=${encodeURIComponent(String(row.image_key))}`
+      : null,
+    imageAlt: String(row.image_alt ?? ""),
     name: String(row.name),
     description: String(row.description),
     servings: Number(row.servings),
@@ -116,8 +120,9 @@ export async function catalog(
     meals: meals.map(meal),
     groceries: groceries.map(grocery),
     home: {
-      name: env.HOME_NAME ?? "Our kitchen",
+      name: env.HOME_NAME ?? "Stuttgart",
       timeZone: env.TIME_ZONE ?? "Europe/Berlin",
+      locale: "de-DE",
     },
     bring: { connected: !!connected, listId },
     preferences: preferences
@@ -148,7 +153,7 @@ export async function loadRecipe(env: Env, id: string) {
   const value = await env.DB.prepare("SELECT * FROM recipes WHERE id=?")
     .bind(id)
     .first<Row>();
-  if (!value) throw new HttpError(404, "Recipe not found.");
+  if (!value) throw new HttpError(404, "Rezept nicht gefunden.");
   return recipe(value);
 }
 export async function saveRecipe(
@@ -249,7 +254,7 @@ export async function addGrocery(
   const id = crypto.randomUUID(),
     time = now();
   const row = await env.DB.prepare(
-    `INSERT INTO groceries(id,name,normalized_name,quantity,unit,notes,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(normalized_name,unit) WHERE checked=0 DO UPDATE SET quantity=groceries.quantity+excluded.quantity,notes=CASE WHEN excluded.notes='' THEN groceries.notes ELSE excluded.notes END,updated_at=excluded.updated_at RETURNING *`,
+    `INSERT INTO groceries(id,name,normalized_name,quantity,unit,notes,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(normalized_name,unit) WHERE checked=0 DO UPDATE SET quantity=groceries.quantity+excluded.quantity,notes=CASE WHEN excluded.notes='' THEN groceries.notes ELSE excluded.notes END,updated_at=excluded.updated_at,bring_synced_at=NULL RETURNING *`,
   )
     .bind(
       id,
@@ -282,7 +287,7 @@ export async function groceryPlan(env: Env, from: string, to: string) {
   // updates the desired minimum instead of adding the same week's ingredients again.
   const writes = missing.map((item) =>
     env.DB.prepare(
-      `INSERT INTO groceries(id,name,normalized_name,quantity,unit,notes,updated_at) VALUES (?,?,?,?,?,'Meal plan',?) ON CONFLICT(normalized_name,unit) WHERE checked=0 DO UPDATE SET quantity=MAX(groceries.quantity,excluded.quantity),updated_at=excluded.updated_at`,
+      `INSERT INTO groceries(id,name,normalized_name,quantity,unit,notes,updated_at) VALUES (?,?,?,?,?,'Speiseplan',?) ON CONFLICT(normalized_name,unit) WHERE checked=0 DO UPDATE SET quantity=MAX(groceries.quantity,excluded.quantity),updated_at=excluded.updated_at,bring_synced_at=NULL`,
     ).bind(
       crypto.randomUUID(),
       item.name,
@@ -300,6 +305,12 @@ export async function deleteItem(
   table: "recipes" | "pantry" | "meals" | "groceries",
   id: string,
 ) {
+  const image =
+    table === "recipes"
+      ? await env.DB.prepare("SELECT image_key FROM recipes WHERE id=?")
+          .bind(id)
+          .first<{ image_key: string | null }>()
+      : null;
   if (table === "groceries")
     await env.DB.batch([
       env.DB.prepare(
@@ -308,5 +319,9 @@ export async function deleteItem(
       env.DB.prepare("DELETE FROM groceries WHERE id=?").bind(id),
     ]);
   else await env.DB.prepare(`DELETE FROM ${table} WHERE id=?`).bind(id).run();
+  if (image?.image_key && env.IMAGES)
+    await env.IMAGES.delete(image.image_key).catch(() =>
+      console.warn("Verwaistes Rezeptbild konnte nicht entfernt werden."),
+    );
   return { deleted: id };
 }

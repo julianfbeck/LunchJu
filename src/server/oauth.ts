@@ -28,7 +28,7 @@ function page(body: string, headers?: Headers, status = 200) {
     "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   );
   return new Response(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LunchJu · Agent access</title><style>
+    `<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LunchJu · Agentenzugang</title><style>
 :root{color-scheme:light;--ink:#272923;--accent:#ad3e29;--line:#e0e1da}
 *{box-sizing:border-box}body{background:#fff;color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:620px;margin:40px auto;padding:24px}
 .brand{display:block;color:var(--ink);font-weight:750;font-size:23px;letter-spacing:-1px;text-decoration:none;border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:40px}
@@ -45,7 +45,7 @@ function continueTo(location: string, headers: Headers) {
   const h = new Headers(headers);
   h.delete("Location");
   return page(
-    `<meta http-equiv="refresh" content="0;url=${escape(location)}"><h1>You're connected.</h1><p>Returning to ${escape(target.host || target.protocol)}.</p><a href="${escape(location)}">Continue to your agent</a>`,
+    `<meta http-equiv="refresh" content="0;url=${escape(location)}"><h1>Verbindung hergestellt.</h1><p>Zurück zu ${escape(target.host || target.protocol)}.</p><a href="${escape(location)}">Weiter zu deinem Agenten</a>`,
     h,
   );
 }
@@ -88,7 +88,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
           .bind(options.userId)
           .first();
         if (!user)
-          throw new HttpError(401, "This household account is disabled.");
+          throw new HttpError(401, "Dieses Haushaltskonto ist deaktiviert.");
         if (
           options.grantType === "authorization_code" &&
           !options.props?.persistent
@@ -104,7 +104,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
             props.subject !== verified.auth.userId ||
             !Array.isArray(props.scopes)
           )
-            return new Response("Invalid authorization.", { status: 401 });
+            return new Response("Ungültige Autorisierung.", { status: 401 });
           return Response.json({
             subject: props.subject,
             scopes: verified.auth.scope.filter(
@@ -129,7 +129,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.origin !== origin(this.env))
-      return new Response("Wrong OAuth origin.", { status: 421 });
+      return new Response("Ungültiger OAuth-Ursprung.", { status: 421 });
     const buffered = await boundedBody(
       request,
       url.pathname === "/mcp" ? 262144 : 16384,
@@ -139,7 +139,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
         const key = `register:${await hash(request.headers.get("CF-Connecting-IP") ?? "local")}:${Math.floor(Date.now() / 600000)}`;
         const count = Number((await this.oauthEnv.OAUTH_KV.get(key)) ?? "0");
         if (count >= 15)
-          return new Response("Too many registrations.", { status: 429 });
+          return new Response("Zu viele Registrierungen.", { status: 429 });
         await this.oauthEnv.OAUTH_KV.put(key, String(count + 1), {
           expirationTtl: 600,
         });
@@ -161,7 +161,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
       issuer = origin(this.env);
     if (!user)
       return page(
-        `<h1>Connect an agent</h1><p>Sign in with your LunchJu passkey, then return here to approve this agent.</p><a class="button" href="/?next=${encodeURIComponent(url.pathname + url.search)}">Sign in with a passkey</a>`,
+        `<h1>Agenten verbinden</h1><p>Melde dich mit deinem LunchJu-Passkey an und gib anschließend diesen Agenten frei.</p><a class="button" href="/?next=${encodeURIComponent(url.pathname + url.search)}">Mit Passkey anmelden</a>`,
         undefined,
         401,
       );
@@ -169,7 +169,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
     if (url.pathname === "/oauth/grants")
       return this.grants(request, user.id, oauth);
     if (url.pathname !== "/oauth/authorize")
-      return new Response("Not found.", { status: 404 });
+      return new Response("Nicht gefunden.", { status: 404 });
     if (request.method === "GET") {
       try {
         if (
@@ -184,11 +184,14 @@ export class LunchJuOAuth extends DurableObject<Env> {
         )
           throw new HttpError(
             400,
-            "A valid S256 PKCE request for this kitchen is required.",
+            "Für diesen Haushalt ist eine gültige S256-PKCE-Anfrage erforderlich.",
           );
         const parsed = await oauth.parseAuthRequest(request);
         if (parsed.scope.some((scope) => !SCOPES.includes(scope)))
-          throw new HttpError(400, "Unsupported permission.");
+          throw new HttpError(
+            400,
+            "Diese Berechtigung wird nicht unterstützt.",
+          );
         const authRequest = {
           ...parsed,
           scope: [...new Set(["mcp:read", ...parsed.scope])],
@@ -201,23 +204,23 @@ export class LunchJuOAuth extends DurableObject<Env> {
           { expirationTtl: 600 },
         );
         return page(
-          `<h1>Connect ${escape(details.clientName)}</h1><p>Signed in as ${escape(user.name)}. This agent can access the single shared home, including its food history and dietary preferences.</p><p><small>Returns to ${escape(details.redirectHost)}. The client name is supplied by the application.</small></p><form method="post"><input type="hidden" name="handle" value="${escape(consent.handle)}"><label><input type="checkbox" name="scope" value="mcp:read" checked> Read recipes, pantry, meals and groceries</label><label><input type="checkbox" name="scope" value="mcp:write" checked> Add and edit recipes, plan meals and sync Bring</label><label><input type="checkbox" name="scope" value="mcp:admin"> Delete items and manage settings allowed by my role</label><label><input type="checkbox" name="persistent" value="yes"> Keep connected until I revoke access</label><small>Access tokens last 15 minutes. Continuing access requires the last checkbox.</small><p><button name="decision" value="approve">Connect agent</button><button name="decision" value="deny">Cancel</button></p></form>`,
+          `<h1>${escape(details.clientName)} verbinden</h1><p>Angemeldet als ${escape(user.name)}. Dieser Agent erhält Zugriff auf den Haushalt Stuttgart einschließlich Essensverlauf und Ernährungswünschen.</p><p><small>Rückkehr zu ${escape(details.redirectHost)}. Der Name des Agenten wird von seiner Anwendung angegeben.</small></p><form method="post"><input type="hidden" name="handle" value="${escape(consent.handle)}"><label><input type="checkbox" name="scope" value="mcp:read" checked> Rezepte, Vorräte, Mahlzeiten und Einkaufsliste lesen</label><label><input type="checkbox" name="scope" value="mcp:write" checked> Rezepte und Bilder bearbeiten, Mahlzeiten planen und Bring abgleichen</label><label><input type="checkbox" name="scope" value="mcp:admin"> Einträge und Bilder löschen und erlaubte Einstellungen verwalten</label><label><input type="checkbox" name="persistent" value="yes"> Verbunden bleiben, bis ich den Zugriff widerrufe</label><small>Zugangstokens gelten 15 Minuten. Für dauerhaften Zugriff ist das letzte Kontrollkästchen erforderlich.</small><p><button name="decision" value="approve">Agenten verbinden</button><button name="decision" value="deny">Abbrechen</button></p></form>`,
           consent.headers,
         );
       } catch (error) {
         if (error instanceof AuthorizationError && error.redirectTo)
           return Response.redirect(error.redirectTo, 302);
         return page(
-          "<h1>Connection could not start.</h1><p>Start again from your agent and check its callback URL and requested permissions.</p>",
+          "<h1>Die Verbindung konnte nicht gestartet werden.</h1><p>Starte die Verbindung erneut über deinen Agenten und prüfe seine Rücksprungadresse und Berechtigungen.</p>",
           undefined,
           400,
         );
       }
     }
     if (request.method !== "POST")
-      return new Response("Use GET or POST.", { status: 405 });
+      return new Response("Verwende GET oder POST.", { status: 405 });
     if (request.headers.get("Origin") !== issuer)
-      return new Response("Wrong origin.", { status: 403 });
+      return new Response("Ungültiger Ursprung.", { status: 403 });
     try {
       const form = await request.formData(),
         handle = String(form.get("handle") ?? "");
@@ -226,21 +229,21 @@ export class LunchJuOAuth extends DurableObject<Env> {
         form.getAll("decision").length !== 1 ||
         form.getAll("persistent").length > 1
       )
-        throw new HttpError(400, "Invalid consent.");
+        throw new HttpError(400, "Ungültige Freigabe.");
       const key = `consent:${await hash(handle)}`,
         policy = await this.oauthEnv.OAUTH_KV.get<{ subject: string }>(
           key,
           "json",
         );
       if (policy?.subject !== user.id)
-        throw new HttpError(400, "Consent expired.");
+        throw new HttpError(400, "Die Freigabe ist abgelaufen.");
       if (form.get("decision") === "deny") {
         const denied = await oauth.denyConsent(request, handle);
         await this.oauthEnv.OAUTH_KV.delete(key);
         return continueTo(denied.redirectTo, denied.headers);
       }
       if (form.get("decision") !== "approve")
-        throw new HttpError(400, "Invalid consent.");
+        throw new HttpError(400, "Ungültige Freigabe.");
       const scopes = [...new Set(form.getAll("scope").map(String))],
         persistent = form.get("persistent") === "yes";
       if (
@@ -249,7 +252,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
           (scope) => !["mcp:read", "mcp:write", "mcp:admin"].includes(scope),
         )
       )
-        throw new HttpError(400, "Read access is required.");
+        throw new HttpError(400, "Lesezugriff ist erforderlich.");
       if (persistent) scopes.push("offline_access");
       const approved = await oauth.approveConsent(request, handle, {
         scope: scopes,
@@ -266,7 +269,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
       return continueTo(result.redirectTo, approved.headers);
     } catch {
       return page(
-        "<h1>This connection request expired.</h1><p>Start the connection again from your agent.</p>",
+        "<h1>Diese Verbindungsanfrage ist abgelaufen.</h1><p>Starte die Verbindung erneut über deinen Agenten.</p>",
         undefined,
         400,
       );
@@ -292,7 +295,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
         { expirationTtl: 600 },
       );
       return page(
-        `<h1>Connected agents</h1><a href="/">Back to your kitchen</a>${grants.map((grant) => `<section><h2>${escape(String(grant.metadata?.clientName ?? grant.clientId))}</h2><p>${escape(grant.scope.join(" · "))}</p><form method="post"><input type="hidden" name="csrf" value="${token}"><input type="hidden" name="id" value="${escape(grant.id)}"><button>Revoke access</button></form></section>`).join("") || "<p>No agents connected yet.</p>"}`,
+        `<h1>Verbundene Agenten</h1><a href="/">Zurück zu LunchJu</a>${grants.map((grant) => `<section><h2>${escape(String(grant.metadata?.clientName ?? grant.clientId))}</h2><p>${escape(grant.scope.join(" · "))}</p><form method="post"><input type="hidden" name="csrf" value="${token}"><input type="hidden" name="id" value="${escape(grant.id)}"><button>Zugriff widerrufen</button></form></section>`).join("") || "<p>Noch keine Agenten verbunden.</p>"}`,
         new Headers({
           "Set-Cookie": setCookie(this.env, "lunchju_grants", hashed, 600),
         }),
@@ -314,7 +317,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
       policy?.subject !== subject ||
       !policy.ids.includes(String(form.get("id")))
     )
-      return new Response("Invalid revocation request.", { status: 403 });
+      return new Response("Ungültige Anfrage zum Widerruf.", { status: 403 });
     await this.oauthEnv.OAUTH_KV.delete(`grants:${hashed}`);
     await oauth.revokeGrant(String(form.get("id")), subject);
     return new Response(null, {

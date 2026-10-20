@@ -13,11 +13,11 @@ export const Route = createRootRoute({
         name: "viewport",
         content: "width=device-width,initial-scale=1,viewport-fit=cover",
       },
-      { title: "LunchJu · Kitchen notebook" },
+      { title: "LunchJu · Küchenbuch" },
       {
         name: "description",
         content:
-          "Your recipes, pantry, meal plans and groceries. One shared kitchen for your household and your agent.",
+          "Rezepte, Vorräte, Wochenplan und Einkaufsliste für deinen Haushalt in Stuttgart und deinen Agenten.",
       },
       { name: "theme-color", content: "#ffffff" },
     ],
@@ -27,7 +27,7 @@ export const Route = createRootRoute({
     ],
   }),
   component: () => (
-    <html lang="en">
+    <html lang="de">
       <head>
         <HeadContent />
       </head>
@@ -39,8 +39,8 @@ export const Route = createRootRoute({
   ),
   notFoundComponent: () => (
     <main className="auth-page">
-      <h1>Page not found</h1>
-      <a href="/">Back to LunchJu</a>
+      <h1>Seite nicht gefunden</h1>
+      <a href="/">Zurück zu LunchJu</a>
     </main>
   ),
 });

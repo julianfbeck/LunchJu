@@ -109,7 +109,7 @@ describe("Passkey-only authentication", () => {
         ),
         "/api/auth/register/verify",
       ),
-    ).rejects.toThrow("already been used");
+    ).rejects.toThrow("bereits verwendet");
     expect(
       f.sqlite.prepare("SELECT name FROM users WHERE role='member'").all(),
     ).toEqual([{ name: "Sam" }]);
@@ -187,7 +187,7 @@ describe("Passkey-only authentication", () => {
         req("/api/auth/login/verify", response, cookie),
         "/api/auth/login/verify",
       ),
-    ).rejects.toThrow("already used");
+    ).rejects.toThrow("bereits verwendet");
     const sessionCookie = verified.headers
       .getSetCookie()
       .find((value) => value.startsWith("lunchju_session="))!
@@ -220,7 +220,7 @@ describe("Passkey-only authentication", () => {
         }),
         "/api/auth/login/options",
       ),
-    ).rejects.toThrow("your LunchJu");
+    ).rejects.toThrow("deiner LunchJu");
     await expect(
       authRoute(
         f.env,
@@ -230,7 +230,7 @@ describe("Passkey-only authentication", () => {
         }),
         "/api/auth/register/options",
       ),
-    ).rejects.toThrow("invitation");
+    ).rejects.toThrow("Einladung");
   });
   it("requires a strong bootstrap token for the first account and gives no password login", async () => {
     const f = fixture();
@@ -241,7 +241,7 @@ describe("Passkey-only authentication", () => {
         req("/api/auth/register/options", { name: "Owner", token: "wrong" }),
         "/api/auth/register/options",
       ),
-    ).rejects.toThrow("setup token");
+    ).rejects.toThrow("Einrichtungscode");
     const options = await authRoute(
       f.env,
       req("/api/auth/register/options", {
@@ -257,7 +257,7 @@ describe("Passkey-only authentication", () => {
         req("/api/auth/password", { password: "anything" }),
         "/api/auth/password",
       ),
-    ).rejects.toThrow("not found");
+    ).rejects.toThrow("nicht gefunden");
   });
   it("blocks disabled accounts even if a session has not expired", async () => {
     const f = fixture();
@@ -279,6 +279,6 @@ describe("Passkey-only authentication", () => {
     const f = fixture();
     await rateLimit(f.env, "test", 2);
     await rateLimit(f.env, "test", 2);
-    await expect(rateLimit(f.env, "test", 2)).rejects.toThrow("Too many");
+    await expect(rateLimit(f.env, "test", 2)).rejects.toThrow("Zu viele");
   });
 });

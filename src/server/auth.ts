@@ -28,7 +28,7 @@ const SESSION_DAYS = 30;
 const signup = z.object({
   name: z.string().trim().min(1).max(80),
   token: z.string().max(256).optional(),
-  label: z.string().trim().min(1).max(80).default("My passkey"),
+  label: z.string().trim().min(1).max(80).default("Mein Passkey"),
 });
 export async function currentUser(
   env: Env,
@@ -44,14 +44,14 @@ export async function currentUser(
 }
 export async function requireUser(env: Env, request: Request) {
   const user = await currentUser(env, request);
-  if (!user) throw new HttpError(401, "Sign in with your passkey.");
+  if (!user) throw new HttpError(401, "Melde dich mit deinem Passkey an.");
   return user;
 }
 export function requireOwner(user: User) {
   if (user.role !== "owner")
     throw new HttpError(
       403,
-      "Only the home owner can manage members and integrations.",
+      "Nur der Haushaltsinhaber kann Mitglieder und Verbindungen verwalten.",
     );
 }
 async function session(env: Env, user: User) {
@@ -103,7 +103,7 @@ async function takeChallenge(env: Env, request: Request, kind: string) {
   if (!row)
     throw new HttpError(
       400,
-      "This passkey request expired or was already used. Please start again.",
+      "Diese Passkey-Anfrage ist abgelaufen oder wurde bereits verwendet. Bitte beginne erneut.",
     );
   return row;
 }
@@ -120,10 +120,10 @@ export async function authRoute(
     return Response.json({
       user,
       setup: !owner,
-      homeName: env.HOME_NAME ?? "Our kitchen",
+      homeName: env.HOME_NAME ?? "Stuttgart",
     });
   }
-  if (request.method !== "POST") throw new HttpError(405, "Use POST.");
+  if (request.method !== "POST") throw new HttpError(405, "Verwende POST.");
   requireSameOrigin(request, env);
   await rateLimit(
     env,
@@ -159,10 +159,7 @@ export async function authRoute(
       ).first();
       if (!owner) {
         if (!(await secretMatches(data.token ?? "", env.BOOTSTRAP_TOKEN)))
-          throw new HttpError(
-            403,
-            "Enter the one-time setup token from your deployment.",
-          );
+          throw new HttpError(403, "Gib den einmaligen Einrichtungscode ein.");
         pending.user.role = "owner";
         pending.bootstrap = true;
       } else {
@@ -175,7 +172,7 @@ export async function authRoute(
         if (!valid)
           throw new HttpError(
             403,
-            "Ask the home owner for a fresh invitation.",
+            "Bitte den Haushaltsinhaber um eine neue Einladung.",
           );
         pending.invitation = invitation;
       }
@@ -212,7 +209,10 @@ export async function authRoute(
       data.additional &&
       (await currentUser(env, request))?.id !== data.user.id
     )
-      throw new HttpError(401, "Sign in again before adding a passkey.");
+      throw new HttpError(
+        401,
+        "Melde dich erneut an, bevor du einen Passkey hinzufügst.",
+      );
     const verified = await verifyRegistrationResponse({
       response: body as unknown as RegistrationResponseJSON,
       expectedChallenge: pending.challenge,
@@ -221,7 +221,7 @@ export async function authRoute(
       requireUserVerification: true,
     });
     if (!verified.verified || !verified.registrationInfo)
-      throw new HttpError(400, "Passkey could not be verified.");
+      throw new HttpError(400, "Der Passkey konnte nicht überprüft werden.");
     const key = verified.registrationInfo.credential;
     const writes: D1PreparedStatement[] = [];
     if (data.bootstrap)
@@ -258,7 +258,7 @@ export async function authRoute(
     if (!result.at(-1)?.meta.changes)
       throw new HttpError(
         409,
-        "This invitation or setup token has already been used.",
+        "Diese Einladung oder dieser Einrichtungscode wurde bereits verwendet.",
       );
     return session(env, data.user);
   }
@@ -292,7 +292,7 @@ export async function authRoute(
     if (!key)
       throw new HttpError(
         401,
-        "This passkey is not registered with this home.",
+        "Dieser Passkey gehört nicht zu diesem Haushalt.",
       );
     const verified = await verifyAuthenticationResponse({
       response,
@@ -307,19 +307,22 @@ export async function authRoute(
       },
     });
     if (!verified.verified)
-      throw new HttpError(401, "Passkey could not be verified.");
+      throw new HttpError(401, "Der Passkey konnte nicht überprüft werden.");
     const update = await env.DB.prepare(
       "UPDATE passkeys SET counter=? WHERE id=? AND counter=?",
     )
       .bind(verified.authenticationInfo.newCounter, key.id, key.counter)
       .run();
     if (!update.meta.changes)
-      throw new HttpError(409, "Passkey state changed. Please sign in again.");
+      throw new HttpError(
+        409,
+        "Der Passkey wurde geändert. Bitte melde dich erneut an.",
+      );
     return session(env, {
       id: key.user_id,
       name: key.user_name,
       role: key.role,
     });
   }
-  throw new HttpError(404, "Authentication route not found.");
+  throw new HttpError(404, "Anmeldepfad nicht gefunden.");
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+z.config(z.locales.de());
 
 export const text = z.string().trim().min(1).max(160);
 export const id = z.string().uuid();
@@ -11,7 +12,7 @@ export const date = z
       !Number.isNaN(parsed.getTime()) &&
       parsed.toISOString().slice(0, 10) === value
     );
-  }, "Use a valid YYYY-MM-DD date");
+  }, "Verwende ein gültiges Datum im Format JJJJ-MM-TT");
 export const unit = z.enum([
   "g",
   "kg",
@@ -66,7 +67,7 @@ export const mealSchema = z
   })
   .refine(
     (value) => value.recipeId || value.name,
-    "Choose a recipe or name the meal",
+    "Wähle ein Rezept oder benenne die Mahlzeit",
   );
 export const grocerySchema = z.object({
   name: text,
@@ -77,6 +78,8 @@ export const grocerySchema = z.object({
 export type Ingredient = z.infer<typeof ingredientSchema>;
 export type Recipe = z.infer<typeof recipeSchema> & {
   id: string;
+  imageUrl: string | null;
+  imageAlt: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -103,7 +106,7 @@ export type Catalog = {
   pantry: PantryItem[];
   meals: Meal[];
   groceries: Grocery[];
-  home: { name: string; timeZone: string };
+  home: { name: string; timeZone: string; locale: "de-DE" };
   bring: { connected: boolean; listId: string | null };
   user: User;
 };

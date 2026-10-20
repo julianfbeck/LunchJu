@@ -212,7 +212,7 @@ describe("Shared kitchen operations", () => {
         f.env,
         f.access,
       ),
-    ).rejects.toThrow("already exists");
+    ).rejects.toThrow("existiert bereits");
     expect(
       f.sqlite.prepare("SELECT quantity FROM groceries WHERE checked=0").get()
         ?.quantity,
@@ -250,7 +250,7 @@ describe("Shared kitchen operations", () => {
     };
     await expect(
       runOperation("create_invitation", {}, f.env, member),
-    ).rejects.toThrow("home owner");
+    ).rejects.toThrow("Haushaltsinhaber");
     expect(f.sqlite.prepare("SELECT * FROM recipes").all()).toHaveLength(0);
   });
   it("creates hashed invitations and refuses to delete a final passkey or disable the owner", async () => {
@@ -272,7 +272,7 @@ describe("Shared kitchen operations", () => {
       .run("key", f.access.user.id, "encoded");
     await expect(
       runOperation("delete_passkey", { credentialId: "key" }, f.env, f.access),
-    ).rejects.toThrow("at least one");
+    ).rejects.toThrow("mindestens einen");
     await runOperation(
       "set_member_active",
       { id: f.access.user.id, active: false },

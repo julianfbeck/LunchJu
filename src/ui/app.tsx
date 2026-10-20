@@ -29,6 +29,7 @@ import {
   Copy,
   Leaf,
   Utensils,
+  ImagePlus,
 } from "lucide-react";
 import type {
   Catalog,
@@ -39,7 +40,21 @@ import type {
   Ingredient,
   User,
 } from "../shared";
-import { action, request, today, addDays, formatDate } from "./api";
+import {
+  action,
+  request,
+  today,
+  addDays,
+  formatDate,
+  passkeyError,
+  ApiError,
+} from "./api";
+import {
+  unitLabels,
+  locationLabels,
+  mealSlotLabels,
+  formatNumber,
+} from "../locale";
 
 type Data = Catalog & {
   preferences: { diet: string; allergies: string[]; notes: string };
@@ -51,11 +66,11 @@ type Editor = {
   recipe?: Recipe;
 };
 const tabs = [
-  { id: "today", name: "Meal plan", icon: CalendarDays },
-  { id: "recipes", name: "Recipes", icon: BookOpen },
-  { id: "pantry", name: "Pantry", icon: PackageOpen },
-  { id: "groceries", name: "Groceries", icon: ShoppingBasket },
-  { id: "settings", name: "Settings", icon: Settings2 },
+  { id: "today", name: "Wochenplan", icon: CalendarDays },
+  { id: "recipes", name: "Rezepte", icon: BookOpen },
+  { id: "pantry", name: "Vorräte", icon: PackageOpen },
+  { id: "groceries", name: "Einkaufsliste", icon: ShoppingBasket },
+  { id: "settings", name: "Einstellungen", icon: Settings2 },
 ] as const;
 const units = ["g", "kg", "ml", "l", "piece", "tsp", "tbsp", "cup"];
 
@@ -80,17 +95,17 @@ export function KitchenApp() {
     return (
       <div className="loading-screen">
         <Brand />
-        <p>Loading…</p>
+        <p>Wird geladen…</p>
       </div>
     );
   if (session.error)
     return (
       <div className="auth-page">
         <Brand />
-        <h1>Unable to load LunchJu</h1>
+        <h1>LunchJu konnte nicht geladen werden</h1>
         <p className="error">{session.error.message}</p>
-        <p>Please try again in a moment.</p>
-        <button onClick={() => session.refetch()}>Try again</button>
+        <p>Bitte versuche es gleich noch einmal.</p>
+        <button onClick={() => session.refetch()}>Erneut versuchen</button>
       </div>
     );
   if (!session.data.user)
@@ -111,7 +126,7 @@ export function KitchenApp() {
       <aside className="sidebar">
         <Brand />
         <div className="home-label">{session.data.homeName}</div>
-        <nav aria-label="Main navigation">
+        <nav aria-label="Hauptnavigation">
           {tabs.map((item) => (
             <button
               key={item.id}
@@ -126,7 +141,7 @@ export function KitchenApp() {
         </nav>
         <div className="sidebar-bottom">
           <button className="agent-link" onClick={() => setTab("settings")}>
-            <Bot size={18} /> Agent access <ArrowUpRight size={15} />
+            <Bot size={18} /> Agentenzugang <ArrowUpRight size={15} />
           </button>
           <button className="profile" onClick={() => setTab("settings")}>
             <span className="avatar">
@@ -136,8 +151,8 @@ export function KitchenApp() {
               <strong>{session.data.user.name}</strong>
               <small>
                 {session.data.user.role === "owner"
-                  ? "Home owner"
-                  : "Household member"}
+                  ? "Haushaltsinhaber"
+                  : "Haushaltsmitglied"}
               </small>
             </span>
             <Settings2 size={17} />
@@ -149,7 +164,7 @@ export function KitchenApp() {
           <Brand />
           <button
             className="avatar"
-            aria-label="Your settings"
+            aria-label="Deine Einstellungen"
             onClick={() => setTab("settings")}
           >
             {session.data.user.name.slice(0, 1).toUpperCase()}
@@ -157,7 +172,7 @@ export function KitchenApp() {
         </header>
         <KitchenContent tab={tab} setTab={setTab} notify={setNotice} />
       </main>
-      <nav className="bottom-nav" aria-label="Mobile navigation">
+      <nav className="bottom-nav" aria-label="Mobile Navigation">
         {tabs.map((item) => (
           <button
             key={item.id}
@@ -181,7 +196,7 @@ export function KitchenApp() {
 }
 function Brand() {
   return (
-    <a className="brand" href="/" aria-label="LunchJu home">
+    <a className="brand" href="/" aria-label="LunchJu Startseite">
       <span className="brand-icon" aria-hidden="true">
         lj
       </span>
@@ -219,9 +234,7 @@ function AuthScreen({
       await request("/api/auth/login/verify", response);
       await onLogin();
     } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Passkey sign-in failed.",
-      );
+      setError(passkeyError(error));
     } finally {
       setBusy(false);
     }
@@ -237,15 +250,13 @@ function AuthScreen({
       >("/api/auth/register/options", {
         name: form.get("name"),
         token: invite || form.get("token"),
-        label: "My first passkey",
+        label: "Mein erster Passkey",
       });
       const response = await startRegistration({ optionsJSON: options });
       await request("/api/auth/register/verify", response);
       await onLogin();
     } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Passkey setup failed.",
-      );
+      setError(passkeyError(error));
     } finally {
       setBusy(false);
     }
@@ -255,62 +266,60 @@ function AuthScreen({
       <section className="auth-story">
         <Brand />
         <div className="auth-intro">
-          <span className="eyebrow">A SHARED KITCHEN NOTEBOOK</span>
+          <span className="eyebrow">DEIN GEMEINSAMES KÜCHENBUCH</span>
           <h1>
-            The kitchen
+            Dein Küchenbuch
             <br />
-            notebook.
+            für Stuttgart.
           </h1>
-          <p>
-            A place for your recipes, the food you have, and the meals ahead.
-          </p>
+          <p>Rezepte, Vorräte und dein Plan für die nächsten Mahlzeiten.</p>
           <ol className="notebook-index">
             <li>
               <span>01</span>
-              <strong>Recipes</strong>
-              <small>The ones worth keeping</small>
+              <strong>Rezepte</strong>
+              <small>Zum Nachkochen und Aufheben</small>
             </li>
             <li>
               <span>02</span>
-              <strong>Meal plan</strong>
-              <small>What’s on this week</small>
+              <strong>Wochenplan</strong>
+              <small>Was diese Woche auf den Tisch kommt</small>
             </li>
             <li>
               <span>03</span>
-              <strong>Pantry</strong>
-              <small>What you already have</small>
+              <strong>Vorräte</strong>
+              <small>Was du schon zu Hause hast</small>
             </li>
             <li>
               <span>04</span>
-              <strong>Groceries</strong>
-              <small>What to pick up</small>
+              <strong>Einkaufsliste</strong>
+              <small>Was noch fehlt</small>
             </li>
           </ol>
         </div>
-        <small>FOR YOUR HOUSEHOLD. OPEN TO YOUR AGENT.</small>
+        <small>FÜR DEINEN HAUSHALT IN STUTTGART.</small>
       </section>
       <section className="auth-panel">
         <div className="auth-card">
           <span className="eyebrow">
-            {setup ? "FIRST-TIME SETUP" : "YOUR KITCHEN"}
+            {setup ? "ERSTE EINRICHTUNG" : "DEIN HAUSHALT"}
           </span>
           <h2>
             {setup
-              ? "Set up your home"
+              ? "Haushalt einrichten"
               : invite
-                ? "Join your household"
-                : "Sign in"}
+                ? "Dem Haushalt beitreten"
+                : "Anmelden"}
           </h2>
           <p>
             {setup
-              ? "Create the first account for your shared home."
+              ? "Erstelle das erste Konto für deinen Haushalt in Stuttgart."
               : invite
-                ? `You're invited to join ${homeName}.`
-                : `Sign in to ${homeName} with your passkey.`}
+                ? `Du bist zum Haushalt ${homeName} eingeladen.`
+                : `Melde dich mit deinem Passkey für ${homeName} an.`}
           </p>
           {setup || invite ? (
             <form onSubmit={register}>
-              <Field label="Your name">
+              <Field label="Dein Name">
                 <input
                   name="name"
                   autoComplete="name"
@@ -320,30 +329,30 @@ function AuthScreen({
                 />
               </Field>
               {setup && (
-                <Field label="One-time setup token">
+                <Field label="Einmaliger Einrichtungscode">
                   <input
                     name="token"
                     type="password"
                     autoComplete="off"
                     required
-                    placeholder="Setup token"
+                    placeholder="Einrichtungscode"
                   />
                   <small>
-                    Use the private token provided when LunchJu was set up.
+                    Nutze den privaten Code aus der Einrichtung von LunchJu.
                   </small>
                 </Field>
               )}
               <button className="primary full" disabled={busy}>
                 <KeyRound size={18} />
                 {busy
-                  ? "Creating your passkey…"
-                  : "Create account with a passkey"}
+                  ? "Passkey wird erstellt…"
+                  : "Konto mit Passkey erstellen"}
               </button>
             </form>
           ) : (
             <button className="primary full" disabled={busy} onClick={login}>
               <KeyRound size={18} />
-              {busy ? "Waiting for your passkey…" : "Sign in with a passkey"}
+              {busy ? "Warten auf deinen Passkey…" : "Mit Passkey anmelden"}
             </button>
           )}
           {error && (
@@ -355,8 +364,8 @@ function AuthScreen({
             <KeyRound size={17} />
             <p>
               {setup || invite
-                ? "Your fingerprint, face or device PIN creates your passkey."
-                : "New here? Ask the home owner for an invitation."}
+                ? "Erstelle deinen Passkey mit Fingerabdruck, Gesichtserkennung oder Geräte-PIN."
+                : "Noch kein Zugang? Bitte den Haushaltsinhaber um eine Einladung."}
             </p>
           </div>
         </div>
@@ -413,27 +422,27 @@ function KitchenContent({
   function remove(type: Editor["type"], value: { id: string; name: string }) {
     if (
       window.confirm(
-        `Remove “${value.name}”?${type === "recipe" ? " Existing meal history will be kept." : ""}`,
+        `„${value.name}“ entfernen?${type === "recipe" ? " Der bisherige Essensverlauf bleibt erhalten." : ""}`,
       )
     )
       perform(
         `delete_${type === "pantry" ? "pantry_item" : type}`,
         { id: value.id },
-        "Removed from your kitchen.",
+        "Entfernt.",
       );
   }
   if (query.isPending)
     return (
       <div className="loading-screen">
-        <p>Loading your kitchen…</p>
+        <p>Dein Haushalt wird geladen…</p>
       </div>
     );
   if (query.error)
     return (
       <section className="empty-state">
-        <h2>Your kitchen couldn't load.</h2>
+        <h2>Dein Haushalt konnte nicht geladen werden.</h2>
         <p className="error">{query.error.message}</p>
-        <button onClick={() => query.refetch()}>Try again</button>
+        <button onClick={() => query.refetch()}>Erneut versuchen</button>
       </section>
     );
   const data = query.data,
@@ -452,14 +461,14 @@ function KitchenContent({
   );
   const title =
     tab === "today"
-      ? "Meal plan"
+      ? "Wochenplan"
       : tab === "recipes"
-        ? "Recipes"
+        ? "Rezepte"
         : tab === "pantry"
           ? "Pantry"
           : tab === "groceries"
-            ? "Groceries"
-            : "Settings";
+            ? "Einkaufsliste"
+            : "Einstellungen";
   return (
     <>
       <header className="page-heading">
@@ -472,14 +481,14 @@ function KitchenContent({
           <h1>{title}</h1>
           <p>
             {tab === "today"
-              ? "Plan the week. Keep track of what you eat."
+              ? "Plane deine Woche und halte fest, was du isst."
               : tab === "recipes"
-                ? "Your collection, ready to cook."
+                ? "Deine Rezeptsammlung zum Nachkochen."
                 : tab === "pantry"
-                  ? "Food in stock, quantities, and expiry dates."
+                  ? "Deine Vorräte, Mengen und Haltbarkeitsdaten."
                   : tab === "groceries"
-                    ? "A shared shopping list for your household."
-                    : "Your household, connections, and account."}
+                    ? "Die gemeinsame Einkaufsliste für deinen Haushalt."
+                    : "Dein Haushalt, deine Verbindungen und dein Konto."}
           </p>
         </div>
         {tab !== "settings" && (
@@ -501,12 +510,12 @@ function KitchenContent({
             <Plus size={18} />
             <span>
               {tab === "today"
-                ? "Plan a meal"
+                ? "Mahlzeit planen"
                 : tab === "recipes"
-                  ? "Add recipe"
+                  ? "Rezept hinzufügen"
                   : tab === "pantry"
-                    ? "Add food"
-                    : "Add item"}
+                    ? "Lebensmittel hinzufügen"
+                    : "Artikel hinzufügen"}
             </span>
           </button>
         )}
@@ -518,18 +527,18 @@ function KitchenContent({
               <div>
                 <strong>
                   {planned.length}
-                  <small> meals</small>
+                  <small> Mahlzeiten</small>
                 </strong>
-                <span>planned for this week</span>
+                <span>für diese Woche geplant</span>
               </div>
             </div>
             <button className="overview-card" onClick={() => setTab("pantry")}>
               <div>
                 <strong>
                   {expired.length}
-                  <small> items</small>
+                  <small> Artikel</small>
                 </strong>
-                <span>to use soon</span>
+                <span>bald verbrauchen</span>
               </div>
               <ArrowUpRight size={17} />
             </button>
@@ -540,21 +549,21 @@ function KitchenContent({
               <div>
                 <strong>
                   {data.groceries.filter((item) => !item.checked).length}
-                  <small> items</small>
+                  <small> Artikel</small>
                 </strong>
-                <span>to buy</span>
+                <span>noch zu kaufen</span>
               </div>
               <ArrowUpRight size={17} />
             </button>
           </div>
           <div className="section-heading">
             <div>
-              <h2>Weekly plan</h2>
+              <h2>Wochenplan</h2>
             </div>
             <div className="week-controls">
               <button
                 className="icon-button"
-                aria-label="Previous week"
+                aria-label="Vorherige Woche"
                 onClick={() => setDay(addDays(day, -7))}
               >
                 <ChevronLeft size={18} />
@@ -564,13 +573,13 @@ function KitchenContent({
               </strong>
               <button
                 className="icon-button"
-                aria-label="Next week"
+                aria-label="Nächste Woche"
                 onClick={() => setDay(addDays(day, 7))}
               >
                 <ChevronRight size={18} />
               </button>
               <button className="quiet" onClick={() => setDay(baseToday)}>
-                Today
+                Heute
               </button>
             </div>
           </div>
@@ -597,14 +606,15 @@ function KitchenContent({
           <div className="day-heading">
             <h3>
               {day === baseToday
-                ? "Today"
+                ? "Heute"
                 : formatDate(day, {
                     weekday: "long",
                     month: "short",
                     day: "numeric",
                   })}
               <span>
-                {data.meals.filter((item) => item.date === day).length} meals
+                {data.meals.filter((item) => item.date === day).length}{" "}
+                Mahlzeiten
               </span>
             </h3>
             <button
@@ -613,7 +623,7 @@ function KitchenContent({
                 setEditor({ type: "meal", value: { date: day } as Meal })
               }
             >
-              <Plus size={16} /> Add a meal
+              <Plus size={16} /> Mahlzeit hinzufügen
             </button>
           </div>
           <div className="meal-list">
@@ -623,12 +633,13 @@ function KitchenContent({
                 <article className="meal-card" key={meal.id}>
                   <div className="meal-main">
                     <span className="eyebrow">
-                      {meal.slot} {meal.status === "eaten" ? "· EATEN" : ""}
+                      {mealSlotLabels[meal.slot]}{" "}
+                      {meal.status === "eaten" ? "· GEGESSEN" : ""}
                     </span>
                     <h3>{meal.name}</h3>
                     <p>
                       <Users size={14} />
-                      {meal.servings} servings
+                      {formatNumber(meal.servings)} Portionen
                       {meal.notes && <> · {meal.notes}</>}
                     </p>
                   </div>
@@ -641,28 +652,28 @@ function KitchenContent({
                           perform(
                             "mark_meal_eaten",
                             { id: meal.id },
-                            "Added to your food history.",
+                            "Im Essensverlauf gespeichert.",
                           )
                         }
                       >
                         <Check size={15} />
-                        <span>Mark eaten</span>
+                        <span>Als gegessen markieren</span>
                       </button>
                     ) : (
                       <span className="pill">
-                        <Check size={14} /> Eaten
+                        <Check size={14} /> Gegessen
                       </span>
                     )}
                     <button
                       className="icon-button"
-                      aria-label={`Edit ${meal.name}`}
+                      aria-label={`Bearbeiten: ${meal.name}`}
                       onClick={() => setEditor({ type: "meal", value: meal })}
                     >
                       <Pencil size={16} />
                     </button>
                     <button
                       className="icon-button danger"
-                      aria-label={`Remove ${meal.name}`}
+                      aria-label={`Entfernen: ${meal.name}`}
                       onClick={() => remove("meal", meal)}
                     >
                       <Trash2 size={16} />
@@ -674,9 +685,9 @@ function KitchenContent({
           {!data.meals.some((item) => item.date === day) && (
             <Empty
               icon={<Utensils size={30} />}
-              title="No meals planned"
-              text="Choose a recipe or add a meal for this day."
-              action="Plan a meal"
+              title="Keine Mahlzeiten geplant"
+              text="Wähle ein Rezept oder trage eine Mahlzeit für diesen Tag ein."
+              action="Mahlzeit planen"
               onClick={() =>
                 setEditor({ type: "meal", value: { date: day } as Meal })
               }
@@ -686,8 +697,8 @@ function KitchenContent({
             <div>
               <ShoppingBasket size={23} />
               <div>
-                <strong>Shop for this week</strong>
-                <p>Add missing ingredients from your planned meals.</p>
+                <strong>Einkauf für diese Woche</strong>
+                <p>Ergänze die fehlenden Zutaten aus deinem Wochenplan.</p>
               </div>
             </div>
             <button
@@ -697,11 +708,11 @@ function KitchenContent({
                 perform(
                   "generate_groceries",
                   { from: monday, to: week[6] },
-                  "Missing ingredients added to groceries.",
+                  "Fehlende Zutaten zur Einkaufsliste hinzugefügt.",
                 )
               }
             >
-              Generate groceries <ArrowUpRight size={16} />
+              Einkaufsliste erstellen <ArrowUpRight size={16} />
             </button>
           </div>
         </>
@@ -712,13 +723,13 @@ function KitchenContent({
             <label className="search">
               <Search size={18} />
               <input
-                aria-label="Search recipes"
-                placeholder="Search recipes or ingredients"
+                aria-label="Rezepte durchsuchen"
+                placeholder="Rezepte oder Zutaten suchen"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
-            <span className="muted">{data.recipes.length} recipes</span>
+            <span className="muted">{data.recipes.length} Rezepte</span>
           </div>
           <div className="recipe-list">
             {data.recipes
@@ -729,13 +740,31 @@ function KitchenContent({
               )
               .map((recipe, index) => (
                 <article className="recipe-row" key={recipe.id}>
-                  <span className="recipe-number" aria-hidden="true">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
+                  {recipe.imageUrl ? (
+                    <button
+                      className="recipe-thumbnail"
+                      onClick={() => setDetail(recipe)}
+                      aria-label={`Rezept öffnen: ${recipe.name}`}
+                    >
+                      <img
+                        src={recipe.imageUrl}
+                        alt={recipe.imageAlt || recipe.name}
+                        width={56}
+                        height={64}
+                        loading="lazy"
+                      />
+                    </button>
+                  ) : (
+                    <span className="recipe-number" aria-hidden="true">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                  )}
                   <button
                     className={`favorite ${recipe.favorite ? "is-favorite" : ""}`}
                     aria-label={
-                      recipe.favorite ? "Remove favorite" : "Favorite recipe"
+                      recipe.favorite
+                        ? "Favorit entfernen"
+                        : "Als Favorit markieren"
                     }
                     aria-pressed={recipe.favorite}
                     onClick={() =>
@@ -768,15 +797,15 @@ function KitchenContent({
                     <div className="recipe-meta">
                       <span>
                         <Clock size={14} />
-                        {recipe.minutes} min
+                        {formatNumber(recipe.minutes)} Min.
                       </span>
                       <span>
                         <Users size={14} />
-                        {recipe.servings} servings
+                        {formatNumber(recipe.servings)} Portionen
                       </span>
                       <button
                         className="icon-button"
-                        aria-label={`Edit ${recipe.name}`}
+                        aria-label={`Bearbeiten: ${recipe.name}`}
                         onClick={() =>
                           setEditor({ type: "recipe", value: recipe })
                         }
@@ -791,9 +820,9 @@ function KitchenContent({
           {!data.recipes.length && (
             <Empty
               icon={<BookOpen size={30} />}
-              title="No recipes yet"
-              text="Add a recipe here, or ask your connected agent to add one."
-              action="Add a recipe"
+              title="Noch keine Rezepte"
+              text="Füge hier ein Rezept hinzu oder bitte deinen verbundenen Agenten darum."
+              action="Rezept hinzufügen"
               onClick={() => setEditor({ type: "recipe" })}
             />
           )}
@@ -810,11 +839,11 @@ function KitchenContent({
                   key={value}
                   onClick={() => setLocation(value)}
                 >
-                  {value}
+                  {locationLabels[value as keyof typeof locationLabels]}
                 </button>
               ))}
             </div>
-            <span className="muted">{data.pantry.length} items in stock</span>
+            <span className="muted">{data.pantry.length} Artikel vorrätig</span>
           </div>
           <div className="stock-list">
             {data.pantry
@@ -826,32 +855,33 @@ function KitchenContent({
                   <div className="stock-name">
                     <strong>{item.name}</strong>
                     <small>
-                      {item.location}
+                      {locationLabels[item.location]}
                       {item.expiresOn &&
-                        ` · Best before ${formatDate(item.expiresOn)}`}
+                        ` · Haltbar bis ${formatDate(item.expiresOn)}`}
                     </small>
                   </div>
                   <span className="stock-quantity">
-                    {item.quantity} <small>{item.unit}</small>
+                    {formatNumber(item.quantity)}{" "}
+                    <small>{unitLabels[item.unit]}</small>
                   </span>
                   {item.expiresOn && item.expiresOn < baseToday ? (
-                    <span className="pill warning">Past date</span>
+                    <span className="pill warning">Datum überschritten</span>
                   ) : (
                     item.expiresOn &&
                     item.expiresOn <= addDays(baseToday, 3) && (
-                      <span className="pill amber">Use soon</span>
+                      <span className="pill amber">Bald verbrauchen</span>
                     )
                   )}
                   <button
                     className="icon-button"
-                    aria-label={`Edit ${item.name}`}
+                    aria-label={`Bearbeiten: ${item.name}`}
                     onClick={() => setEditor({ type: "pantry", value: item })}
                   >
                     <Pencil size={16} />
                   </button>
                   <button
                     className="icon-button danger"
-                    aria-label={`Remove ${item.name}`}
+                    aria-label={`Entfernen: ${item.name}`}
                     onClick={() => remove("pantry", item)}
                   >
                     <Trash2 size={16} />
@@ -862,15 +892,16 @@ function KitchenContent({
           {!data.pantry.length && (
             <Empty
               icon={<PackageOpen size={30} />}
-              title="Your pantry is empty"
-              text="Add what you have so meal planning and shopping can account for it."
-              action="Add food"
+              title="Noch keine Vorräte"
+              text="Trage deine Vorräte ein, damit sie bei Planung und Einkauf berücksichtigt werden."
+              action="Lebensmittel hinzufügen"
               onClick={() => setEditor({ type: "pantry" })}
             />
           )}
           <p className="helper-note">
-            <Leaf size={16} /> Expiry dates help planning. Recording a meal
-            keeps its history; update stock quantities separately.
+            <Leaf size={16} /> Haltbarkeitsdaten helfen bei der Planung.
+            Gegessene Mahlzeiten werden im Verlauf gespeichert; Vorratsmengen
+            änderst du separat.
           </p>
         </>
       )}
@@ -883,7 +914,7 @@ function KitchenContent({
                 aria-pressed={!showChecked}
                 onClick={() => setShowChecked(false)}
               >
-                To buy{" "}
+                Offen{" "}
                 <span>
                   {data.groceries.filter((item) => !item.checked).length}
                 </span>
@@ -893,7 +924,7 @@ function KitchenContent({
                 aria-pressed={showChecked}
                 onClick={() => setShowChecked(true)}
               >
-                Purchased{" "}
+                Gekauft{" "}
                 <span>
                   {data.groceries.filter((item) => item.checked).length}
                 </span>
@@ -907,13 +938,15 @@ function KitchenContent({
                   ? perform(
                       "bring_sync",
                       {},
-                      "Your Bring list and LunchJu are in sync.",
+                      "Bring und LunchJu sind abgeglichen.",
                     )
                   : setTab("settings")
               }
             >
               <RefreshCw size={16} />
-              {data.bring.connected ? "Sync with Bring" : "Connect Bring"}
+              {data.bring.connected
+                ? "Mit Bring abgleichen"
+                : "Bring verbinden"}
             </button>
           </div>
           <div className="stock-list">
@@ -927,7 +960,7 @@ function KitchenContent({
                   <button
                     className="grocery-check"
                     disabled={mutation.isPending}
-                    aria-label={`${item.checked ? "Uncheck" : "Check off"} ${item.name}`}
+                    aria-label={`${item.checked ? "Wieder öffnen" : "Abhaken"} ${item.name}`}
                     aria-pressed={item.checked}
                     onClick={() =>
                       perform("update_grocery", {
@@ -946,18 +979,19 @@ function KitchenContent({
                     </small>
                   </div>
                   <span className="stock-quantity">
-                    {item.quantity} <small>{item.unit}</small>
+                    {formatNumber(item.quantity)}{" "}
+                    <small>{unitLabels[item.unit]}</small>
                   </span>
                   <button
                     className="icon-button"
-                    aria-label={`Edit ${item.name}`}
+                    aria-label={`Bearbeiten: ${item.name}`}
                     onClick={() => setEditor({ type: "grocery", value: item })}
                   >
                     <Pencil size={16} />
                   </button>
                   <button
                     className="icon-button danger"
-                    aria-label={`Remove ${item.name}`}
+                    aria-label={`Entfernen: ${item.name}`}
                     onClick={() => remove("grocery", item)}
                   >
                     <Trash2 size={16} />
@@ -968,24 +1002,28 @@ function KitchenContent({
           {!data.groceries.some((item) => item.checked === showChecked) && (
             <Empty
               icon={<ShoppingBasket size={30} />}
-              title={showChecked ? "No purchased items" : "Nothing to buy"}
+              title={
+                showChecked
+                  ? "Noch nichts gekauft"
+                  : "Die Einkaufsliste ist leer"
+              }
               text={
                 showChecked
-                  ? "Purchased items will show up here."
-                  : "Add a few essentials, or generate a shopping list from your meal plan."
+                  ? "Gekaufte Artikel erscheinen hier."
+                  : "Füge Artikel hinzu oder erstelle die Einkaufsliste aus deinem Wochenplan."
               }
-              action="Add an item"
+              action="Artikel hinzufügen"
               onClick={() => setEditor({ type: "grocery" })}
             />
           )}
           <div className="shopping-note">
             <span className="bring-mark">b!</span>
             <div>
-              <strong>Bring shopping list</strong>
+              <strong>Bring-Einkaufsliste Stuttgart</strong>
               <p>
                 {data.bring.connected
-                  ? "Your shared Bring list is connected. Sync whenever you’re ready."
-                  : "Connect your Bring list in Settings to sync groceries."}
+                  ? "Die Bring-Liste Stuttgart ist verbunden. Du kannst sie jederzeit abgleichen."
+                  : "Verbinde die Bring-Liste Stuttgart in den Einstellungen."}
               </p>
             </div>
           </div>
@@ -994,7 +1032,7 @@ function KitchenContent({
       {tab === "settings" && <Settings data={data} run={run} notify={notify} />}
       {editor && (
         <Modal
-          title={`${editor.value?.id ? "Edit" : "Add"} ${editor.type === "pantry" ? "food" : editor.type === "grocery" ? "grocery item" : editor.type}`}
+          title={`${{ recipe: "Rezept", meal: "Mahlzeit", pantry: "Lebensmittel", grocery: "Einkaufsartikel" }[editor.type]} ${editor.value?.id ? "bearbeiten" : "hinzufügen"}`}
           onClose={() => setEditor(null)}
         >
           <EditorForm
@@ -1002,7 +1040,7 @@ function KitchenContent({
             data={data}
             busy={mutation.isPending}
             save={async (operation, input) => {
-              await run(operation, input, "Saved to your kitchen.");
+              await run(operation, input, "Gespeichert.");
               setEditor(null);
             }}
             onDelete={
@@ -1022,6 +1060,13 @@ function KitchenContent({
       {detail && (
         <RecipeDetail
           recipe={detail}
+          onImageSaved={(recipe) => {
+            setDetail((current) =>
+              current?.id === recipe.id ? recipe : current,
+            );
+            void client.invalidateQueries({ queryKey: ["catalog"] });
+            notify("Rezeptbild gespeichert.");
+          }}
           onClose={() => setDetail(null)}
           onPlan={() => {
             setEditor({ type: "meal", recipe: detail });
@@ -1132,7 +1177,7 @@ function Modal({
           </div>
           <button
             className="icon-button"
-            aria-label="Close dialog"
+            aria-label="Dialog schließen"
             onClick={onClose}
           >
             <X size={22} />
@@ -1231,7 +1276,9 @@ function EditorForm({
     try {
       await save(operation, input);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not save.");
+      setError(
+        error instanceof Error ? error.message : "Speichern fehlgeschlagen.",
+      );
     }
   }
   return (
@@ -1239,7 +1286,7 @@ function EditorForm({
       {editor.type !== "meal" && (
         <Field
           label={
-            editor.type === "recipe" ? "Recipe name" : "Food or ingredient"
+            editor.type === "recipe" ? "Rezeptname" : "Lebensmittel oder Zutat"
           }
         >
           <input
@@ -1248,8 +1295,8 @@ function EditorForm({
             maxLength={160}
             placeholder={
               editor.type === "recipe"
-                ? "The pasta everyone asks for"
-                : "e.g. Cherry tomatoes"
+                ? "Pasta mit Tomatensoße"
+                : "z. B. Kirschtomaten"
             }
             defaultValue={value?.name}
           />
@@ -1257,17 +1304,17 @@ function EditorForm({
       )}
       {editor.type === "recipe" && (
         <>
-          <Field label="Description">
+          <Field label="Beschreibung">
             <textarea
               name="description"
               rows={2}
               maxLength={3000}
               defaultValue={(value as Recipe)?.description}
-              placeholder="A weeknight favorite, ready in half an hour."
+              placeholder="Ein schnelles Abendessen, fertig in einer halben Stunde."
             />
           </Field>
           <div className="form-row">
-            <Field label="Servings">
+            <Field label="Portionen">
               <input
                 name="servings"
                 type="number"
@@ -1278,7 +1325,7 @@ function EditorForm({
                 defaultValue={(value as Recipe)?.servings ?? 2}
               />
             </Field>
-            <Field label="Time, in minutes">
+            <Field label="Zeit in Minuten">
               <input
                 name="minutes"
                 type="number"
@@ -1290,8 +1337,8 @@ function EditorForm({
             </Field>
           </div>
           <div className="ingredient-heading">
-            <strong>Ingredients</strong>
-            <small>For the servings above</small>
+            <strong>Zutaten</strong>
+            <small>Für die angegebene Portionszahl</small>
           </div>
           {ingredients.map((ingredient, index) => (
             <div className="ingredient-input" key={index}>
@@ -1311,13 +1358,13 @@ function EditorForm({
                     ),
                   )
                 }
-                placeholder="Ingredient"
+                placeholder="Zutat"
                 required
                 maxLength={160}
               />
               <input
                 name={`quantity-${index}`}
-                aria-label={`Quantity for ingredient ${index + 1}`}
+                aria-label={`Menge für Zutat ${index + 1}`}
                 type="number"
                 value={ingredient.quantity}
                 onChange={(event) =>
@@ -1336,7 +1383,7 @@ function EditorForm({
               />
               <select
                 name={`unit-${index}`}
-                aria-label={`Unit for ingredient ${index + 1}`}
+                aria-label={`Einheit für Zutat ${index + 1}`}
                 value={ingredient.unit}
                 onChange={(event) =>
                   setIngredients((items) =>
@@ -1352,14 +1399,16 @@ function EditorForm({
                 }
               >
                 {units.map((unit) => (
-                  <option key={unit}>{unit}</option>
+                  <option key={unit} value={unit}>
+                    {unitLabels[unit as keyof typeof unitLabels]}
+                  </option>
                 ))}
               </select>
               <button
                 type="button"
                 className="icon-button"
                 disabled={ingredients.length <= 1}
-                aria-label={`Remove ingredient ${index + 1}`}
+                aria-label={`Zutat ${index + 1} entfernen`}
                 onClick={() =>
                   setIngredients((items) => items.filter((_, i) => i !== index))
                 }
@@ -1378,9 +1427,9 @@ function EditorForm({
               ])
             }
           >
-            <Plus size={16} /> Add ingredient
+            <Plus size={16} /> Zutat hinzufügen
           </button>
-          <Field label="Cooking steps, one per line">
+          <Field label="Zubereitungsschritte, einer pro Zeile">
             <textarea
               name="instructions"
               required
@@ -1388,18 +1437,18 @@ function EditorForm({
               maxLength={30000}
               defaultValue={(value as Recipe)?.instructions.join("\n")}
               placeholder={
-                "Chop the vegetables.\nWarm the pan and add a little olive oil.\nBring everything together and enjoy."
+                "Gemüse schneiden.\nEtwas Olivenöl in einer Pfanne erhitzen.\nZutaten anbraten und abschmecken."
               }
             />
           </Field>
-          <Field label="Tags, separated by commas">
+          <Field label="Schlagwörter, durch Kommas getrennt">
             <input
               name="tags"
               defaultValue={(value as Recipe)?.tags.join(", ")}
-              placeholder="Weeknight, Vegetarian, Family favorite"
+              placeholder="Schnell, Vegetarisch, Lieblingsgericht"
             />
           </Field>
-          <Field label="Original recipe link (optional)">
+          <Field label="Link zum Originalrezept (optional)">
             <input
               name="sourceUrl"
               type="url"
@@ -1411,7 +1460,7 @@ function EditorForm({
       )}
       {(editor.type === "pantry" || editor.type === "grocery") && (
         <div className="form-row">
-          <Field label="Quantity">
+          <Field label="Menge">
             <input
               name="quantity"
               type="number"
@@ -1422,13 +1471,15 @@ function EditorForm({
               defaultValue={(value as PantryItem | Grocery)?.quantity ?? 1}
             />
           </Field>
-          <Field label="Unit">
+          <Field label="Einheit">
             <select
               name="unit"
               defaultValue={(value as PantryItem | Grocery)?.unit ?? "piece"}
             >
               {units.map((unit) => (
-                <option key={unit}>{unit}</option>
+                <option key={unit} value={unit}>
+                  {unitLabels[unit as keyof typeof unitLabels]}
+                </option>
               ))}
             </select>
           </Field>
@@ -1436,17 +1487,19 @@ function EditorForm({
       )}
       {editor.type === "pantry" && (
         <div className="form-row">
-          <Field label="Where is it?">
+          <Field label="Lagerort">
             <select
               name="location"
               defaultValue={(value as PantryItem)?.location ?? "Pantry"}
             >
               {["Pantry", "Fridge", "Freezer"].map((value) => (
-                <option key={value}>{value}</option>
+                <option key={value} value={value}>
+                  {locationLabels[value as keyof typeof locationLabels]}
+                </option>
               ))}
             </select>
           </Field>
-          <Field label="Best before (optional)">
+          <Field label="Haltbar bis (optional)">
             <input
               name="expiresOn"
               type="date"
@@ -1457,14 +1510,14 @@ function EditorForm({
       )}
       {editor.type === "meal" && (
         <>
-          <Field label="Choose a recipe">
+          <Field label="Rezept auswählen">
             <select
               name="recipeId"
               defaultValue={
                 (value as Meal)?.recipeId ?? editor.recipe?.id ?? ""
               }
             >
-              <option value="">A meal outside the recipe book</option>
+              <option value="">Mahlzeit ohne Rezept</option>
               {data.recipes.map((recipe) => (
                 <option value={recipe.id} key={recipe.id}>
                   {recipe.name}
@@ -1472,16 +1525,16 @@ function EditorForm({
               ))}
             </select>
           </Field>
-          <Field label="Meal name (used when no recipe is selected)">
+          <Field label="Mahlzeit (ohne ausgewähltes Rezept)">
             <input
               name="name"
               maxLength={160}
               defaultValue={value?.name ?? ""}
-              placeholder="e.g. Dinner out, leftovers, homemade pizza"
+              placeholder="z. B. Essen gehen, Reste, selbstgemachte Pizza"
             />
           </Field>
           <div className="form-row">
-            <Field label="Date">
+            <Field label="Datum">
               <input
                 name="date"
                 type="date"
@@ -1491,19 +1544,21 @@ function EditorForm({
                 }
               />
             </Field>
-            <Field label="Meal">
+            <Field label="Mahlzeit">
               <select
                 name="slot"
                 defaultValue={(value as Meal)?.slot ?? "dinner"}
               >
                 {["breakfast", "lunch", "dinner", "snack"].map((slot) => (
-                  <option key={slot}>{slot}</option>
+                  <option key={slot} value={slot}>
+                    {mealSlotLabels[slot as keyof typeof mealSlotLabels]}
+                  </option>
                 ))}
               </select>
             </Field>
           </div>
           <div className="form-row">
-            <Field label="Servings">
+            <Field label="Portionen">
               <input
                 name="servings"
                 type="number"
@@ -1521,21 +1576,21 @@ function EditorForm({
                 name="status"
                 defaultValue={(value as Meal)?.status ?? "planned"}
               >
-                <option value="planned">Planned</option>
-                <option value="eaten">Eaten</option>
+                <option value="planned">Geplant</option>
+                <option value="eaten">Gegessen</option>
               </select>
             </Field>
           </div>
         </>
       )}
       {(editor.type === "meal" || editor.type === "grocery") && (
-        <Field label="Notes (optional)">
+        <Field label="Notizen (optional)">
           <textarea
             name="notes"
             rows={2}
             maxLength={1000}
             defaultValue={(value as Meal | Grocery)?.notes}
-            placeholder="Anything worth remembering?"
+            placeholder="Weitere Hinweise"
           />
         </Field>
       )}
@@ -1551,12 +1606,12 @@ function EditorForm({
             type="button"
             onClick={onDelete}
           >
-            <Trash2 size={16} /> Remove
+            <Trash2 size={16} /> Entfernen
           </button>
         )}
         <button className="primary" disabled={busy}>
           <Check size={17} />
-          {busy ? "Saving…" : "Save"}
+          {busy ? "Wird gespeichert…" : "Speichern"}
         </button>
       </div>
     </form>
@@ -1564,11 +1619,13 @@ function EditorForm({
 }
 function RecipeDetail({
   recipe,
+  onImageSaved,
   onClose,
   onPlan,
   onEdit,
 }: {
   recipe: Recipe;
+  onImageSaved: (recipe: Recipe) => void;
   onClose: () => void;
   onPlan: () => void;
   onEdit: () => void;
@@ -1585,14 +1642,15 @@ function RecipeDetail({
   return (
     <Modal title={recipe.name} onClose={onClose}>
       <div className="recipe-detail">
+        <RecipeImageEditor recipe={recipe} onSaved={onImageSaved} />
         <p>{recipe.description}</p>
         <div className="detail-controls">
           <span>
             <Clock size={16} />
-            {recipe.minutes} minutes
+            {formatNumber(recipe.minutes)} Minuten
           </span>
           <label>
-            Servings{" "}
+            Portionen{" "}
             <input
               type="number"
               min="0.1"
@@ -1609,28 +1667,30 @@ function RecipeDetail({
         <div className={check.data?.canCook ? "readiness ready" : "readiness"}>
           <PackageOpen size={19} />
           {check.isPending
-            ? "Checking your pantry…"
+            ? "Vorräte werden geprüft…"
             : check.error
-              ? "Pantry check unavailable."
+              ? "Vorräte konnten nicht geprüft werden."
               : check.data?.canCook
-                ? "You have everything you need."
-                : `${check.data?.missing.length} ingredients to pick up.`}
+                ? "Alle Zutaten sind vorhanden."
+                : `${check.data?.missing.length} Zutaten fehlen.`}
         </div>
-        <h3>Ingredients</h3>
+        <h3>Zutaten</h3>
         <ul className="ingredients-list">
           {recipe.ingredients.map((item, index) => (
             <li key={index}>
               <span>{item.name}</span>
               <strong>
-                {Math.round(
-                  ((item.quantity * servings) / recipe.servings) * 100,
-                ) / 100}{" "}
-                {item.unit}
+                {formatNumber(
+                  Math.round(
+                    ((item.quantity * servings) / recipe.servings) * 100,
+                  ) / 100,
+                )}{" "}
+                {unitLabels[item.unit]}
               </strong>
             </li>
           ))}
         </ul>
-        <h3>Method</h3>
+        <h3>Zubereitung</h3>
         <ol className="steps">
           {recipe.instructions.map((step, index) => (
             <li key={index}>{step}</li>
@@ -1643,19 +1703,179 @@ function RecipeDetail({
             target="_blank"
             rel="noopener noreferrer"
           >
-            Original recipe <ArrowUpRight size={16} />
+            Originalrezept <ArrowUpRight size={16} />
           </a>
         )}
         <div className="form-footer">
           <button className="secondary" onClick={onEdit}>
-            <Pencil size={16} /> Edit recipe
+            <Pencil size={16} /> Rezept bearbeiten
           </button>
           <button className="primary" onClick={onPlan}>
-            <CalendarDays size={16} /> Plan this meal
+            <CalendarDays size={16} /> Mahlzeit planen
           </button>
         </div>
       </div>
     </Modal>
+  );
+}
+function RecipeImageEditor({
+  recipe,
+  onSaved,
+}: {
+  recipe: Recipe;
+  onSaved: (recipe: Recipe) => void;
+}) {
+  const [editing, setEditing] = useState(false),
+    [file, setFile] = useState<File | null>(null),
+    [preview, setPreview] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  useEffect(() => {
+    if (!file) {
+      setPreview("");
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  async function upload(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!file) return;
+    const form = new FormData(event.currentTarget);
+    form.set("image", file);
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/recipes/${recipe.id}/image`, {
+        method: "POST",
+        body: form,
+        credentials: "same-origin",
+      });
+      const result = (await response.json()) as Recipe & { error?: string };
+      if (!response.ok)
+        throw new ApiError(
+          result.error || "Das Bild konnte nicht gespeichert werden.",
+        );
+      onSaved(result);
+      setFile(null);
+      setEditing(false);
+    } catch (error) {
+      setError(
+        error instanceof ApiError
+          ? error.message
+          : "Das Bild konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="recipe-image-editor" aria-label="Rezeptbild">
+      {(preview || recipe.imageUrl) && (
+        <img
+          className="recipe-cover"
+          src={preview || recipe.imageUrl!}
+          alt={recipe.imageAlt || recipe.name}
+          width={560}
+          height={350}
+        />
+      )}
+      {!editing ? (
+        <div className="image-actions">
+          <button
+            className="text-button"
+            onClick={() => {
+              setEditing(true);
+              setError("");
+            }}
+          >
+            <ImagePlus size={17} />
+            {recipe.imageUrl ? "Bild ersetzen" : "Bild hinzufügen"}
+          </button>
+          {recipe.imageUrl && (
+            <button
+              className="text-button danger"
+              disabled={busy}
+              onClick={async () => {
+                if (!confirm("Dieses Rezeptbild entfernen?")) return;
+                setBusy(true);
+                setError("");
+                try {
+                  onSaved(
+                    await action<Recipe>("delete_recipe_image", {
+                      recipeId: recipe.id,
+                    }),
+                  );
+                } catch (error) {
+                  setError(
+                    error instanceof Error
+                      ? error.message
+                      : "Das Bild konnte nicht entfernt werden.",
+                  );
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <Trash2 size={15} />
+              Bild entfernen
+            </button>
+          )}
+        </div>
+      ) : (
+        <form onSubmit={upload}>
+          <Field label="Rezeptbild (JPG, PNG oder WebP, bis 5 MB)">
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              required
+              disabled={busy}
+              onChange={(event) => {
+                const selected = event.target.files?.[0];
+                setError("");
+                if (selected && selected.size > 5 * 1024 * 1024) {
+                  setError("Bilder dürfen höchstens 5 MB groß sein.");
+                  event.target.value = "";
+                  setFile(null);
+                } else setFile(selected ?? null);
+              }}
+            />
+          </Field>
+          <Field label="Bildbeschreibung">
+            <input
+              name="altText"
+              maxLength={500}
+              defaultValue={recipe.imageAlt || recipe.name}
+              placeholder="Beschreibe das Gericht auf dem Bild"
+              disabled={busy}
+            />
+          </Field>
+          <div className="button-row">
+            <button className="secondary" disabled={busy || !file}>
+              {busy ? "Wird hochgeladen…" : "Bild speichern"}
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => {
+                setEditing(false);
+                setFile(null);
+                setError("");
+              }}
+            >
+              Abbrechen
+            </button>
+          </div>
+        </form>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }
 type Run = (
@@ -1689,12 +1909,6 @@ function Settings({
         "list_passkeys",
       ),
   });
-  const lists = useQuery({
-    queryKey: ["bringLists"],
-    queryFn: () =>
-      action<{ lists: { listUuid: string; name: string }[] }>("bring_lists"),
-    enabled: owner && data.bring.connected,
-  });
   async function doRun(operation: string, input?: unknown, message?: string) {
     setBusy(true);
     try {
@@ -1712,16 +1926,14 @@ function Settings({
         Parameters<typeof startRegistration>[0]["optionsJSON"]
       >("/api/auth/register/options", {
         name: data.user.name,
-        label: `Passkey ${new Date().toLocaleDateString()}`,
+        label: `Passkey ${new Date().toLocaleDateString("de-DE")}`,
       });
       const response = await startRegistration({ optionsJSON: options });
       await request("/api/auth/register/verify", response);
       await client.invalidateQueries({ queryKey: ["passkeys"] });
-      notify("Passkey added.");
+      notify("Passkey hinzugefügt.");
     } catch (error) {
-      notify(
-        error instanceof Error ? error.message : "Passkey could not be added.",
-      );
+      notify(passkeyError(error));
     } finally {
       setBusy(false);
     }
@@ -1729,9 +1941,9 @@ function Settings({
   async function copy(value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      notify("Copied to clipboard.");
+      notify("In die Zwischenablage kopiert.");
     } catch {
-      notify("Select and copy the link below.");
+      notify("Markiere und kopiere den Link unten.");
     }
   }
   return (
@@ -1740,13 +1952,13 @@ function Settings({
         <span className="soft-icon">
           <Bot size={26} />
         </span>
-        <h2>Agent access</h2>
+        <h2>Agentenzugang</h2>
         <p>
-          Your agent can browse the whole kitchen, add recipes, plan meals and
-          check what you need. You choose its permissions when connecting.
+          Dein Agent kann Rezepte, Vorräte und Mahlzeiten für Stuttgart
+          verwalten. Seine Berechtigungen legst du beim Verbinden fest.
         </p>
         <label className="copy-field">
-          <span className="sr-only">MCP connection URL</span>
+          <span className="sr-only">MCP-Verbindungsadresse</span>
           <input
             readOnly
             value={
@@ -1757,22 +1969,22 @@ function Settings({
           />
           <button
             className="icon-button"
-            aria-label="Copy MCP URL"
+            aria-label="MCP-Adresse kopieren"
             onClick={() => copy(`${window.location.origin}/mcp`)}
           >
             <Copy size={17} />
           </button>
         </label>
         <small>
-          Add this MCP URL in your agent’s settings and choose OAuth. Sign in
-          using your LunchJu passkey.
+          Füge diese MCP-Adresse in den Einstellungen deines Agenten hinzu und
+          wähle OAuth. Melde dich mit deinem LunchJu-Passkey an.
         </small>
         <a className="secondary" href="/oauth/grants">
-          Manage connected agents <ArrowUpRight size={16} />
+          Verbundene Agenten verwalten <ArrowUpRight size={16} />
         </a>
         <div className="example-prompt">
-          “Plan three vegetarian dinners and add the missing ingredients to
-          groceries.”
+          „Plane drei vegetarische Abendessen und ergänze die fehlenden Zutaten
+          auf der Einkaufsliste.“
         </div>
       </section>
       <section className="settings-card">
@@ -1781,26 +1993,29 @@ function Settings({
         </span>
         <h2>Passkeys</h2>
         <p>
-          Use a passkey on each device or a synced password manager. Keep a
-          spare before replacing a device.
+          Nutze Passkeys auf deinen Geräten oder über einen synchronisierten
+          Passwortmanager. Hinterlege vor einem Gerätewechsel einen weiteren
+          Passkey.
         </p>
         {keys.data?.passkeys.map((key) => (
           <div className="settings-list-row" key={key.id}>
             <KeyRound size={16} />
             <span>
               {key.name}
-              <small>{new Date(key.created_at).toLocaleDateString()}</small>
+              <small>
+                {new Date(key.created_at).toLocaleDateString("de-DE")}
+              </small>
             </span>
             <button
               className="icon-button danger"
               disabled={busy || (keys.data?.passkeys.length ?? 0) < 2}
-              aria-label={`Remove ${key.name}`}
+              aria-label={`Entfernen: ${key.name}`}
               onClick={() => {
-                if (confirm("Remove this passkey?"))
+                if (confirm("Diesen Passkey entfernen?"))
                   void doRun(
                     "delete_passkey",
                     { credentialId: key.id },
-                    "Passkey removed.",
+                    "Passkey entfernt.",
                   );
               }}
             >
@@ -1810,7 +2025,7 @@ function Settings({
         ))}
         {keys.error && <p className="error">{keys.error.message}</p>}
         <button className="secondary" disabled={busy} onClick={addPasskey}>
-          <Plus size={17} /> Add a passkey
+          <Plus size={17} /> Passkey hinzufügen
         </button>
         <button
           className="text-button"
@@ -1820,41 +2035,22 @@ function Settings({
             location.assign("/");
           }}
         >
-          <LogOut size={16} /> Sign out
+          <LogOut size={16} /> Abmelden
         </button>
       </section>
       <section className="settings-card">
         <span className="bring-mark">b!</span>
         <h2>Bring</h2>
         <p>
-          Connect one shared Bring shopping list. New items and checked-off
-          groceries sync both ways when you press Sync.
+          Verbunden wird ausschließlich die Bring-Liste Stuttgart. Neue und
+          abgehakte Artikel werden beim Abgleich in beide Richtungen übernommen.
         </p>
         {owner ? (
           data.bring.connected ? (
             <>
-              <Field label="Your Bring shopping list">
-                <select
-                  value={data.bring.listId ?? ""}
-                  disabled={busy}
-                  onChange={(event) => {
-                    if (event.target.value)
-                      void doRun(
-                        "bring_choose_list",
-                        { listId: event.target.value },
-                        "Bring list selected.",
-                      );
-                  }}
-                >
-                  <option value="">Choose a list</option>
-                  {lists.data?.lists.map((list) => (
-                    <option key={list.listUuid} value={list.listUuid}>
-                      {list.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              {lists.error && <p className="error">{lists.error.message}</p>}
+              <p className="helper-note">
+                Verbundene Liste: <strong>Stuttgart</strong>
+              </p>
               <div className="button-row">
                 <button
                   className="secondary"
@@ -1863,21 +2059,29 @@ function Settings({
                     void doRun(
                       "bring_sync",
                       {},
-                      "Your Bring groceries are in sync.",
+                      "Die Bring-Einkaufsliste ist abgeglichen.",
                     )
                   }
                 >
-                  <RefreshCw size={16} /> Sync now
+                  <RefreshCw size={16} /> Jetzt abgleichen
                 </button>
                 <button
                   className="text-button danger"
                   disabled={busy}
                   onClick={() => {
-                    if (confirm("Disconnect Bring and erase its saved tokens?"))
-                      void doRun("bring_disconnect", {}, "Bring disconnected.");
+                    if (
+                      confirm(
+                        "Bring trennen und die gespeicherten Zugangstokens löschen?",
+                      )
+                    )
+                      void doRun(
+                        "bring_disconnect",
+                        {},
+                        "Bring wurde getrennt.",
+                      );
                   }}
                 >
-                  Disconnect
+                  Trennen
                 </button>
               </div>
             </>
@@ -1890,12 +2094,12 @@ function Settings({
                 const result = await doRun(
                   "bring_connect",
                   { email: form.get("email"), password: form.get("password") },
-                  "Bring connected. Choose your shopping list.",
+                  "Bring ist mit Stuttgart verbunden.",
                 );
                 if (result) element.reset();
               }}
             >
-              <Field label="Bring email">
+              <Field label="Bring-E-Mail">
                 <input
                   name="email"
                   type="email"
@@ -1903,7 +2107,7 @@ function Settings({
                   required
                 />
               </Field>
-              <Field label="Bring password">
+              <Field label="Bring-Passwort">
                 <input
                   name="password"
                   type="password"
@@ -1912,17 +2116,18 @@ function Settings({
                 />
               </Field>
               <button className="secondary" disabled={busy}>
-                {busy ? "Connecting…" : "Connect Bring"}
+                {busy ? "Verbindung wird hergestellt…" : "Bring verbinden"}
               </button>
               <small>
-                Only used to connect to Bring. Your password is never saved.
+                Das Passwort wird nur zur Anmeldung bei Bring verwendet und
+                nicht gespeichert.
               </small>
             </form>
           )
         ) : (
           <p className="helper-note">
-            The home owner manages the Bring connection. Everyone can sync
-            groceries.
+            Die Bring-Verbindung wird vom Haushaltsinhaber verwaltet. Alle
+            Mitglieder können die Einkaufsliste abgleichen.
           </p>
         )}
       </section>
@@ -1930,10 +2135,10 @@ function Settings({
         <span className="soft-icon">
           <Leaf size={24} />
         </span>
-        <h2>Food preferences</h2>
+        <h2>Ernährungswünsche</h2>
         <p>
-          Your agent reads these preferences before planning. Always check
-          ingredients against your allergies.
+          Dein Agent berücksichtigt diese Wünsche bei der Planung. Prüfe die
+          Zutaten bei Allergien immer selbst.
         </p>
         <form
           onSubmit={(event) => {
@@ -1949,36 +2154,36 @@ function Settings({
                   .filter(Boolean),
                 notes: String(form.get("notes")),
               },
-              "Your kitchen preferences are saved.",
+              "Ernährungswünsche gespeichert.",
             );
           }}
         >
-          <Field label="Diet">
+          <Field label="Ernährungsweise">
             <input
               name="diet"
               defaultValue={data.preferences.diet}
-              placeholder="e.g. Vegetarian, flexible, high-protein"
+              placeholder="z. B. vegetarisch, flexibel, eiweißreich"
               maxLength={160}
             />
           </Field>
-          <Field label="Allergies (separated by commas)">
+          <Field label="Allergien (durch Kommas getrennt)">
             <input
               name="allergies"
               defaultValue={data.preferences.allergies.join(", ")}
-              placeholder="e.g. Peanuts, sesame"
+              placeholder="z. B. Erdnüsse, Sesam"
             />
           </Field>
-          <Field label="Notes">
+          <Field label="Notizen">
             <textarea
               name="notes"
               rows={3}
               defaultValue={data.preferences.notes}
               maxLength={3000}
-              placeholder="Quick dinners on weekdays. Not too spicy."
+              placeholder="Unter der Woche schnelle Gerichte. Nicht zu scharf."
             />
           </Field>
           <button className="secondary" disabled={busy}>
-            <Check size={16} /> Save preferences
+            <Check size={16} /> Ernährungswünsche speichern
           </button>
         </form>
       </section>
@@ -1987,10 +2192,10 @@ function Settings({
           <span className="soft-icon">
             <Users size={24} />
           </span>
-          <h2>Members</h2>
+          <h2>Mitglieder</h2>
           <p>
-            One home, shared by your people. Invitations can be used once and
-            expire after 24 hours.
+            Ein gemeinsamer Haushalt in Stuttgart. Einladungen sind einmal
+            verwendbar und laufen nach 24 Stunden ab.
           </p>
           {members.data?.members.map((member) => (
             <div className="settings-list-row" key={member.id}>
@@ -2001,10 +2206,10 @@ function Settings({
                 {member.name}
                 <small>
                   {member.role === "owner"
-                    ? "Home owner"
+                    ? "Haushaltsinhaber"
                     : member.active
-                      ? "Member"
-                      : "Access disabled"}
+                      ? "Mitglied"
+                      : "Zugang deaktiviert"}
                 </small>
               </span>
               {member.role !== "owner" && (
@@ -2015,11 +2220,11 @@ function Settings({
                     void doRun(
                       "set_member_active",
                       { id: member.id, active: !member.active },
-                      "Member access updated.",
+                      "Mitgliederzugang aktualisiert.",
                     )
                   }
                 >
-                  {member.active ? "Disable" : "Enable"}
+                  {member.active ? "Deaktivieren" : "Aktivieren"}
                 </button>
               )}
             </div>
@@ -2033,14 +2238,14 @@ function Settings({
               if (result) setInvitation(result.url);
             }}
           >
-            <Plus size={16} /> Invite someone
+            <Plus size={16} /> Person einladen
           </button>
           {invitation && (
             <label className="copy-field">
-              <input readOnly aria-label="Invitation link" value={invitation} />
+              <input readOnly aria-label="Einladungslink" value={invitation} />
               <button
                 className="icon-button"
-                aria-label="Copy invitation"
+                aria-label="Einladung kopieren"
                 onClick={() => copy(invitation)}
               >
                 <Copy size={16} />

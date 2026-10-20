@@ -32,6 +32,13 @@ import {
 } from "./bring";
 import { hash, randomToken } from "./security";
 import { requireOwner } from "./auth";
+import {
+  uploadRecipeImage,
+  deleteRecipeImage,
+  recipeImageData,
+  decodeImage,
+  MAX_IMAGE_BASE64,
+} from "./images";
 import { HttpError, now, type Env, type Access } from "./types";
 
 type Context = { env: Env; access: Access };
@@ -50,7 +57,7 @@ function operation<S extends z.ZodType>(
         !context.access.scopes.includes("mcp:read") ||
         !context.access.scopes.includes(scope)
       )
-        throw new HttpError(403, `Approve ${scope} for this action.`);
+        throw new HttpError(403, `Gib ${scope} für diese Aktion frei.`);
       return handler(schema.parse(input), context);
     },
   };
@@ -64,29 +71,29 @@ const range = z
       input.to >= input.from &&
       new Date(input.to).getTime() - new Date(input.from).getTime() <=
         62 * 86400000,
-    "Choose an ordered date range of at most 62 days.",
+    "Wähle einen aufsteigenden Zeitraum von höchstens 62 Tagen.",
   );
 export const operations = {
   get_catalog: operation(
-    "Read the complete home catalog: recipes, pantry, planned meals, food history, groceries, dietary preferences and Bring connection status. No credentials are returned.",
+    "Liest den vollständigen Katalog für Stuttgart: Rezepte, Vorräte, Mahlzeiten, Essensverlauf, Einkaufsliste, Ernährungswünsche und Bring-Status. Zugangsdaten werden nie ausgegeben.",
     "mcp:read",
     empty,
     async (_, c) => catalog(c.env, c.access),
   ),
   get_recipe: operation(
-    "Read a recipe and its full ingredient list and cooking instructions.",
+    "Liest ein Rezept mit allen Zutaten und Zubereitungsschritten.",
     "mcp:read",
     target,
     async (input, c) => loadRecipe(c.env, input.id),
   ),
   create_recipe: operation(
-    "Add a recipe to the shared catalog. Quantities describe the base servings; choose explicit units.",
+    "Fügt ein deutsches Rezept hinzu. Mengen beziehen sich auf die angegebene Portionszahl; Einheiten immer ausdrücklich angeben.",
     "mcp:write",
     recipeSchema,
     async (input, c) => saveRecipe(c.env, input),
   ),
   update_recipe: operation(
-    "Replace the editable fields of an existing recipe. Historical and planned meal ingredient snapshots are preserved.",
+    "Aktualisiert ein Rezept. Gespeicherte Zutatenstände bereits geplanter oder gegessener Mahlzeiten bleiben erhalten.",
     "mcp:write",
     recipeSchema.extend({ id }),
     async ({ id, ...input }, c) => {
@@ -95,13 +102,43 @@ export const operations = {
     },
   ),
   delete_recipe: operation(
-    "Delete a recipe. Existing meals retain their name and ingredient snapshot.",
+    "Löscht ein Rezept. Vorhandene Mahlzeiten behalten Namen und gespeicherte Zutaten.",
     "mcp:admin",
     target,
     async (input, c) => deleteItem(c.env, "recipes", input.id),
   ),
+  upload_recipe_image: operation(
+    "Lädt ein Rezeptbild hoch oder ersetzt es. data enthält reines Base64 ohne data-URL-Präfix, contentType ist image/jpeg, image/png oder image/webp. Höchstens 5 MB; altText beschreibt das Bild auf Deutsch.",
+    "mcp:write",
+    z.object({
+      recipeId: id,
+      data: z.string().min(1).max(MAX_IMAGE_BASE64),
+      contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+      altText: z.string().trim().max(500).default(""),
+    }),
+    async (input, c) =>
+      uploadRecipeImage(
+        c.env,
+        input.recipeId,
+        decodeImage(input.data),
+        input.contentType,
+        input.altText,
+      ),
+  ),
+  get_recipe_image: operation(
+    "Liest das Rezeptbild als Bildinhalt mit deutscher Beschreibung. Benötigt Lesezugriff auf den Haushalt Stuttgart.",
+    "mcp:read",
+    z.object({ recipeId: id }),
+    async (input, c) => recipeImageData(c.env, input.recipeId),
+  ),
+  delete_recipe_image: operation(
+    "Entfernt das Bild eines Rezepts aus dem privaten Bildspeicher. Das Rezept bleibt erhalten.",
+    "mcp:admin",
+    z.object({ recipeId: id }),
+    async (input, c) => deleteRecipeImage(c.env, input.recipeId),
+  ),
   check_ingredients: operation(
-    "Check pantry availability for a recipe at the requested number of servings, excluding expired stock. Compatible metric and cooking volume units are converted; names must match.",
+    "Prüft Zutaten für die gewünschte Portionszahl ohne abgelaufene Vorräte. Kompatible Einheiten werden umgerechnet; Zutatennamen müssen übereinstimmen.",
     "mcp:read",
     z.object({ recipeId: id, servings: z.number().positive().max(100) }),
     async (input, c) => {
@@ -129,13 +166,13 @@ export const operations = {
     },
   ),
   add_pantry_item: operation(
-    "Store a pantry stock lot with a quantity, unit, storage location and optional expiry date.",
+    "Erfasst einen Vorrat mit Menge, Einheit, Lagerort und optionalem Haltbarkeitsdatum.",
     "mcp:write",
     pantrySchema,
     async (input, c) => savePantry(c.env, input),
   ),
   update_pantry_item: operation(
-    "Replace a pantry stock lot, including its remaining quantity. Quantity may be zero.",
+    "Aktualisiert einen Vorrat einschließlich seiner Restmenge. Die Menge darf null sein.",
     "mcp:write",
     pantrySchema.extend({ id }),
     async ({ id, ...input }, c) => {
@@ -144,19 +181,19 @@ export const operations = {
     },
   ),
   delete_pantry_item: operation(
-    "Remove a pantry stock lot.",
+    "Entfernt einen Vorrat.",
     "mcp:admin",
     target,
     async (input, c) => deleteItem(c.env, "pantry", input.id),
   ),
   plan_meal: operation(
-    "Schedule a recipe or named meal. Recipe ingredients are scaled to servings and snapshotted. Set status=eaten to log a meal already eaten. This does not change pantry stock.",
+    "Plant ein Rezept oder eine benannte Mahlzeit. Zutaten werden auf Portionen skaliert und gespeichert. status=eaten erfasst eine gegessene Mahlzeit. Vorräte werden separat angepasst.",
     "mcp:write",
     mealSchema,
     async (input, c) => saveMeal(c.env, input),
   ),
   update_meal: operation(
-    "Edit or reschedule a meal. Updating a recipe meal refreshes its ingredient snapshot.",
+    "Bearbeitet oder verschiebt eine Mahlzeit. Bei Rezeptmahlzeiten werden die gespeicherten Zutaten aktualisiert.",
     "mcp:write",
     mealSchema.safeExtend({ id }),
     async ({ id, ...input }, c) => {
@@ -165,7 +202,7 @@ export const operations = {
     },
   ),
   mark_meal_eaten: operation(
-    "Record that a planned meal was eaten. Repeating this action preserves the original eating time. Adjust pantry stock explicitly when needed.",
+    "Markiert eine Mahlzeit als gegessen. Wiederholungen erhalten die ursprüngliche Uhrzeit. Vorräte bei Bedarf ausdrücklich anpassen.",
     "mcp:write",
     target,
     async (input, c) => {
@@ -179,25 +216,25 @@ export const operations = {
     },
   ),
   delete_meal: operation(
-    "Remove a planned meal or food-history entry.",
+    "Entfernt eine geplante Mahlzeit oder einen Eintrag im Essensverlauf.",
     "mcp:admin",
     target,
     async (input, c) => deleteItem(c.env, "meals", input.id),
   ),
   add_grocery: operation(
-    "Add groceries. An existing unchecked entry with the same normalized name and unit has its quantity increased.",
+    "Ergänzt einen Einkaufsartikel. Die Menge eines bereits offenen Artikels mit gleichem Namen und gleicher Einheit wird erhöht.",
     "mcp:write",
     grocerySchema,
     async (input, c) => addGrocery(c.env, input),
   ),
   update_grocery: operation(
-    "Edit a grocery item or check it off. Checking an item does not implicitly add pantry stock.",
+    "Bearbeitet einen Einkaufsartikel oder hakt ihn ab. Abhaken verändert Vorräte nicht automatisch.",
     "mcp:write",
     grocerySchema.extend({ id, checked: z.boolean() }),
     async (input, c) => {
       await exists(c.env, "groceries", input.id);
       const updated = await c.env.DB.prepare(
-        "UPDATE groceries SET name=?,normalized_name=?,quantity=?,unit=?,notes=?,checked=?,updated_at=? WHERE id=? AND (?=1 OR NOT EXISTS(SELECT 1 FROM groceries WHERE checked=0 AND normalized_name=? AND unit=? AND id!=?)) RETURNING id",
+        "UPDATE groceries SET name=?,normalized_name=?,quantity=?,unit=?,notes=?,checked=?,updated_at=?,bring_synced_at=NULL WHERE id=? AND (?=1 OR NOT EXISTS(SELECT 1 FROM groceries WHERE checked=0 AND normalized_name=? AND unit=? AND id!=?)) RETURNING id",
       )
         .bind(
           input.name,
@@ -217,25 +254,25 @@ export const operations = {
       if (!updated)
         throw new HttpError(
           409,
-          "An open grocery with this name and unit already exists. Edit that entry or choose a different unit.",
+          "Ein offener Einkaufsartikel mit diesem Namen und dieser Einheit existiert bereits. Bearbeite ihn oder wähle eine andere Einheit.",
         );
       return input;
     },
   ),
   delete_grocery: operation(
-    "Remove a grocery. A previously synchronized Bring item is removed on the next explicit Bring sync.",
+    "Entfernt einen Einkaufsartikel. Bei Bring verknüpfte Artikel werden beim nächsten ausdrücklichen Abgleich entfernt.",
     "mcp:admin",
     target,
     async (input, c) => deleteItem(c.env, "groceries", input.id),
   ),
   generate_groceries: operation(
-    "Generate missing groceries for planned meals in an inclusive date range. Aggregates ingredients, converts compatible units, subtracts unexpired pantry stock, and avoids adding duplicate quantities on retries.",
+    "Erstellt fehlende Einkaufsartikel für geplante Mahlzeiten im Zeitraum. Zutaten werden summiert, Einheiten umgerechnet und haltbare Vorräte abgezogen. Wiederholungen erzeugen keine doppelten Mengen.",
     "mcp:write",
     range,
     async (input, c) => groceryPlan(c.env, input.from, input.to),
   ),
   set_preferences: operation(
-    "Set the household diet, allergies and cooking notes. These are shared with the agent for meal planning.",
+    "Speichert Ernährungsweise, Allergien und Kochhinweise für die gemeinsame Planung in Stuttgart.",
     "mcp:write",
     z.object({
       diet: z.string().max(160),
@@ -248,7 +285,7 @@ export const operations = {
     },
   ),
   bring_connect: operation(
-    "Connect the home Bring account. Owner only. Password is sent directly to Bring and is never stored; tokens are encrypted.",
+    "Verbindet Bring ausschließlich mit der Liste Stuttgart. Nur für den Haushaltsinhaber. Das Passwort wird nie gespeichert; Tokens werden verschlüsselt.",
     "mcp:admin",
     z.object({ email: z.email(), password: z.string().min(1).max(256) }),
     async (input, c) => {
@@ -257,7 +294,7 @@ export const operations = {
     },
   ),
   bring_lists: operation(
-    "List shopping lists available in the connected Bring account. Owner only.",
+    "Liefert ausschließlich die erlaubte Bring-Liste Stuttgart. Nur für den Haushaltsinhaber.",
     "mcp:read",
     empty,
     async (_, c) => {
@@ -266,7 +303,7 @@ export const operations = {
     },
   ),
   bring_choose_list: operation(
-    "Choose the one Bring shopping list connected to this home. Owner only.",
+    "Bestätigt die festgelegte Bring-Liste Stuttgart. Andere Listen sind gesperrt. Nur für den Haushaltsinhaber.",
     "mcp:admin",
     z.object({ listId: z.string().min(1).max(100) }),
     async (input, c) => {
@@ -275,13 +312,13 @@ export const operations = {
     },
   ),
   bring_sync: operation(
-    "Explicitly sync groceries with Bring: push local additions, changes and removals; pull new items and completed purchases.",
+    "Gleicht Einkaufsartikel ausschließlich mit Stuttgart ab: überträgt lokale Änderungen und übernimmt neue und gekaufte Artikel.",
     "mcp:write",
     empty,
     async (_, c) => syncBring(c.env),
   ),
   bring_disconnect: operation(
-    "Disconnect Bring and erase stored tokens. Owner only.",
+    "Trennt Bring und löscht die gespeicherten Tokens. Nur für den Haushaltsinhaber.",
     "mcp:admin",
     empty,
     async (_, c) => {
@@ -290,7 +327,7 @@ export const operations = {
     },
   ),
   list_members: operation(
-    "List accounts in the single shared home. Owner only.",
+    "Listet die Mitglieder des einzigen Haushalts Stuttgart auf. Nur für den Haushaltsinhaber.",
     "mcp:read",
     empty,
     async (_, c) => {
@@ -304,7 +341,7 @@ export const operations = {
     },
   ),
   create_invitation: operation(
-    "Create a one-use invitation to register a household member with a passkey. Owner only. Link expires after 24 hours.",
+    "Erstellt eine einmalige Einladung zum Haushalt Stuttgart für die Registrierung mit Passkey. Gültig für 24 Stunden. Nur für den Haushaltsinhaber.",
     "mcp:admin",
     empty,
     async (_, c) => {
@@ -322,7 +359,7 @@ export const operations = {
     },
   ),
   set_member_active: operation(
-    "Enable or disable a member. Disabling revokes their browser sessions and blocks future OAuth token validation. The owner cannot be disabled.",
+    "Aktiviert oder deaktiviert ein Mitglied. Deaktivieren widerruft Sitzungen und Agentenzugriff. Der Haushaltsinhaber kann nicht deaktiviert werden.",
     "mcp:admin",
     z.object({ id, active: z.boolean() }),
     async (input, c) => {
@@ -339,7 +376,7 @@ export const operations = {
     },
   ),
   list_passkeys: operation(
-    "List your registered passkeys. Public keys and credential material are not returned.",
+    "Listet deine Passkeys ohne Schlüsselmaterial auf.",
     "mcp:read",
     empty,
     async (_, c) => ({
@@ -351,7 +388,7 @@ export const operations = {
     }),
   ),
   delete_passkey: operation(
-    "Remove one of your passkeys. The final passkey cannot be deleted.",
+    "Entfernt einen deiner Passkeys. Der letzte Passkey kann nicht gelöscht werden.",
     "mcp:admin",
     z.object({ credentialId: z.string().min(1).max(2048) }),
     async (input, c) => {
@@ -363,7 +400,7 @@ export const operations = {
       if (!deleted)
         throw new HttpError(
           409,
-          "Keep at least one passkey, or select a passkey belonging to your account.",
+          "Behalte mindestens einen Passkey und wähle nur einen Passkey deines Kontos.",
         );
       return { deleted: input.credentialId };
     },
@@ -379,7 +416,7 @@ async function exists(
       .bind(id)
       .first())
   )
-    throw new HttpError(404, "Item not found.");
+    throw new HttpError(404, "Eintrag nicht gefunden.");
 }
 export type OperationName = keyof typeof operations;
 export async function runOperation(
@@ -389,12 +426,12 @@ export async function runOperation(
   access: Access,
 ) {
   if (!Object.hasOwn(operations, name))
-    throw new HttpError(404, "Unknown operation.");
+    throw new HttpError(404, "Unbekannte Aktion.");
   const op = operations[name as OperationName],
     result = await op.run(input, { env, access });
   if (op.scope !== "mcp:read")
     await audit(env, access, name).catch(() =>
-      console.error("Audit write failed."),
+      console.error("Protokollierung fehlgeschlagen."),
     );
   return result;
 }

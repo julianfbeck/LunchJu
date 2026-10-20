@@ -1,0 +1,2 @@
+ALTER TABLE recipes ADD COLUMN image_key TEXT;
+ALTER TABLE recipes ADD COLUMN image_alt TEXT NOT NULL DEFAULT '';

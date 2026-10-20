@@ -16,14 +16,17 @@
       "migrations_dir": "migrations",
     },
   ],
+  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "lunchju-images" }],
   "durable_objects": {
     "bindings": [{ "name": "OAUTH_STATE", "class_name": "LunchJuOAuth" }],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LunchJuOAuth"] }],
   "vars": {
     "APP_ORIGIN": "https://lunchju.juli.sh",
-    "HOME_NAME": "Our kitchen",
+    "HOME_NAME": "Stuttgart",
     "TIME_ZONE": "Europe/Berlin",
+    "BRING_LIST_NAME": "Stuttgart",
+    "BRING_LIST_ID": "cf1df8e3-984b-4782-a8b9-60eba7227f56",
   },
   "triggers": { "crons": ["17 3 * * *"] },
   "observability": { "enabled": true },

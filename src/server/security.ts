@@ -35,7 +35,7 @@ export function requireSameOrigin(request: Request, env: Env) {
   if (request.headers.get("Origin") !== origin(env))
     throw new HttpError(
       403,
-      "This request must come from your LunchJu website.",
+      "Diese Anfrage muss von deiner LunchJu-Website stammen.",
     );
 }
 export function cookie(request: Request, name: string) {
@@ -64,27 +64,31 @@ export async function rateLimit(
     .bind(key, time + seconds, time, time)
     .first<{ count: number }>();
   if (!row || row.count > maximum)
-    throw new HttpError(429, "Too many attempts. Please try again shortly.");
+    throw new HttpError(
+      429,
+      "Zu viele Versuche. Bitte versuche es gleich noch einmal.",
+    );
 }
 export async function readJson(
   request: Request,
   max = 262144,
 ): Promise<unknown> {
   if (!request.headers.get("content-type")?.startsWith("application/json"))
-    throw new HttpError(415, "Send application/json.");
+    throw new HttpError(415, "Sende die Anfrage als application/json.");
   const bounded = await boundedBody(request, max);
   try {
     return JSON.parse(await bounded.text());
   } catch {
-    throw new HttpError(400, "Invalid JSON.");
+    throw new HttpError(400, "Ungültiges JSON.");
   }
 }
 export async function boundedBody(
   request: Request,
   max: number,
+  timeoutMs = 5000,
 ): Promise<Request> {
   if (Number(request.headers.get("content-length")) > max)
-    throw new HttpError(413, "Request too large.");
+    throw new HttpError(413, "Die Anfrage ist zu groß.");
   if (!request.body) return request;
   const reader = request.body.getReader();
   let timer: ReturnType<typeof setTimeout>;
@@ -98,7 +102,7 @@ export async function boundedBody(
         size += item.value.length;
         if (size > max) {
           void reader.cancel().catch(() => {});
-          throw new HttpError(413, "Request too large.");
+          throw new HttpError(413, "Die Anfrage ist zu groß.");
         }
         chunks.push(item.value);
       }
@@ -113,8 +117,10 @@ export async function boundedBody(
     new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         void reader.cancel().catch(() => {});
-        reject(new HttpError(408, "Request body timed out."));
-      }, 5000);
+        reject(
+          new HttpError(408, "Zeitüberschreitung beim Übertragen der Anfrage."),
+        );
+      }, timeoutMs);
     }),
   ]).finally(() => clearTimeout(timer!));
   return new Request(request, { body: bytes });
@@ -123,7 +129,7 @@ async function encryptionKey(env: Env) {
   if (!env.ENCRYPTION_KEY || !/^[a-f\d]{64}$/i.test(env.ENCRYPTION_KEY))
     throw new HttpError(
       503,
-      "Configure ENCRYPTION_KEY before connecting Bring.",
+      "Die Verschlüsselung für Bring ist noch nicht eingerichtet.",
     );
   const bytes = Uint8Array.from(env.ENCRYPTION_KEY.match(/../g)!, (v) =>
     parseInt(v, 16),

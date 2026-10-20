@@ -12,6 +12,12 @@ export function fixture() {
       "utf8",
     ),
   );
+  sqlite.exec(
+    readFileSync(
+      new URL("../../migrations/0002_recipe_images.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   class Statement {
     values: unknown[] = [];
     constructor(public sql: string) {}
@@ -70,9 +76,11 @@ export function fixture() {
   const env = {
     DB: db,
     APP_ORIGIN: "https://kitchen.example",
-    HOME_NAME: "Our kitchen",
+    HOME_NAME: "Stuttgart",
     TIME_ZONE: "Europe/Berlin",
     ENCRYPTION_KEY: "a".repeat(64),
+    BRING_LIST_ID: "our-list",
+    BRING_LIST_NAME: "Stuttgart",
     BRING_API_KEY: "test-bring-application-key",
     BOOTSTRAP_TOKEN: "test-bootstrap-token-of-sufficient-length",
   } as Env;

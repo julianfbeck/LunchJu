@@ -11,6 +11,12 @@ import {
   rateLimit,
 } from "./server/security";
 import { HttpError, origin, type Env } from "./server/types";
+import {
+  getRecipeImage,
+  uploadRecipeImage,
+  MAX_IMAGE_BYTES,
+} from "./server/images";
+import { audit } from "./server/db";
 export { LunchJuOAuth } from "./server/oauth";
 
 export async function cleanup(env: Env) {
@@ -39,15 +45,68 @@ export async function routeRequest(
       request.headers.get("Origin") &&
       request.headers.get("Origin") !== origin(env)
     )
-      throw new HttpError(403, "Origin not allowed.");
-    const buffered = await boundedBody(request, 262144);
-    return handleMcp(buffered, env, ctx);
+      throw new HttpError(403, "Dieser Ursprung ist nicht erlaubt.");
+    return handleMcp(request, env, ctx);
   }
   if (url.pathname.startsWith("/api/auth/"))
     return authRoute(env, request, url.pathname);
   if (url.pathname.startsWith("/api/")) {
     const user = await requireUser(env, request);
-    if (request.method !== "POST") throw new HttpError(405, "Use POST.");
+    const access = {
+      user,
+      scopes: ["mcp:read", "mcp:write", "mcp:admin"],
+      agent: false,
+    };
+    const imageRoute = url.pathname.match(/^\/api\/recipes\/([^/]+)\/image$/);
+    if (imageRoute) {
+      if (request.method === "GET") {
+        const { image } = await getRecipeImage(env, imageRoute[1]);
+        return new Response(image.body, {
+          headers: {
+            "Content-Type": image.httpMetadata?.contentType ?? "image/jpeg",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+      if (request.method !== "POST")
+        throw new HttpError(405, "Verwende GET oder POST.");
+      requireSameOrigin(request, env);
+      await rateLimit(env, `image:${user.id}`, 20);
+      if (
+        !request.headers.get("Content-Type")?.startsWith("multipart/form-data")
+      )
+        throw new HttpError(415, "Sende das Bild als Formulardatei.");
+      const bounded = await boundedBody(
+        request,
+        MAX_IMAGE_BYTES + 16384,
+        30000,
+      );
+      const form = await bounded.formData();
+      const file = form.get("image");
+      const altText = form.get("altText") ?? "";
+      if (
+        !(file instanceof File) ||
+        typeof altText !== "string" ||
+        altText.length > 500
+      )
+        throw new HttpError(
+          400,
+          "Bitte wähle ein Bild und eine Beschreibung mit höchstens 500 Zeichen.",
+        );
+      const recipe = await uploadRecipeImage(
+        env,
+        imageRoute[1],
+        new Uint8Array(await file.arrayBuffer()),
+        file.type,
+        altText.trim(),
+      );
+      await audit(env, access, "upload_recipe_image", imageRoute[1]).catch(() =>
+        console.error("Protokollierung fehlgeschlagen."),
+      );
+      return Response.json(recipe);
+    }
+    if (request.method !== "POST") throw new HttpError(405, "Verwende POST.");
     requireSameOrigin(request, env);
     await rateLimit(env, `api:${user.id}`, 180);
     const body = (await readJson(request)) as {
@@ -55,13 +114,9 @@ export async function routeRequest(
       input?: unknown;
     };
     if (url.pathname !== "/api/action" || typeof body.operation !== "string")
-      throw new HttpError(404, "Route not found.");
+      throw new HttpError(404, "Pfad nicht gefunden.");
     return Response.json(
-      await runOperation(body.operation, body.input ?? {}, env, {
-        user,
-        scopes: ["mcp:read", "mcp:write", "mcp:admin"],
-        agent: false,
-      }),
+      await runOperation(body.operation, body.input ?? {}, env, access),
     );
   }
   return null;
@@ -107,7 +162,7 @@ export default {
           : "UnknownError",
       );
       return Response.json(
-        { error: "Something went wrong. Please try again." },
+        { error: "Ein Fehler ist aufgetreten. Bitte versuche es erneut." },
         { status: 500, headers: { "Cache-Control": "no-store" } },
       );
     }

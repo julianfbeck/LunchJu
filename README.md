@@ -1,17 +1,17 @@
 # LunchJu
 
-A shared kitchen built for people and their agents. Plan meals, keep recipes, track pantry stock and food history, and manage groceries from a mobile-first website or an authenticated MCP client.
+A shared kitchen built for people and their agents. Plan meals, keep recipes, track pantry stock and food history, and manage groceries from a mobile-first website or an authenticated MCP client. The application and agent instructions are German, with one shared home: Stuttgart.
 
 Live app: [lunchju.juli.sh](https://lunchju.juli.sh)
 
 ## What it does
 
 - One home with multiple invited members. Everyone signs in with a passkey; there are no password accounts.
-- Recipe creation, editing, favorites, serving scaling and pantry availability checks.
+- Recipe creation, editing, favorites, serving scaling, private recipe images and pantry availability checks.
 - Dated meal planning and an editable record of meals eaten. Ingredients are snapshotted so deleting a recipe preserves food history.
 - Pantry lots with quantities, units, fridge/freezer/pantry storage and best-before dates.
 - Shopping lists generated from planned meals. Compatible units are converted, stock is allocated once by meal date and expiry, and repeated generation does not add the same quantities again.
-- Bring connection, list selection and explicit synchronization of shopping additions, changes, completions and removals.
+- Bring connection restricted to Stuttgart and explicit synchronization of shopping additions, changes, completions and removals. Bring article names and quantities use German labels.
 - The same kitchen operations are available to the website and MCP agents, including the full catalog and dietary preferences.
 
 ## Architecture
@@ -23,6 +23,7 @@ flowchart TD
   Worker --> D1[D1 · kitchen, users, sessions, integration tokens]
   Worker --> OAuth[SQLite Durable Object · OAuth lifecycle and validation]
   Worker --> Bring[Bring API]
+  Worker --> R2[Private R2 · recipe images]
   OAuth --> D1
 ```
 
@@ -30,7 +31,7 @@ TanStack Start renders the application through Cloudflare's Vite plugin. D1 hold
 
 Only OAuth state changes and token validation pass through the Durable Object's queue. After validation, MCP tools execute in the outer Worker, so a slow Bring call does not hold up other users' authentication. Revocation blocks subsequent validations; already admitted requests can finish. There is no Workers KV binding and no runtime schema migration.
 
-The Worker also serves static assets and runs daily cleanup of expired sessions, invitations, challenges and rate-limit records. Fonts are bundled with the application. There is no Supabase, external application server, or model API dependency.
+The Worker also serves static assets and runs daily cleanup of expired sessions, invitations, challenges and rate-limit records. The interface uses system fonts. There is no Supabase, external application server, or model API dependency.
 
 ## Local development
 
@@ -53,10 +54,11 @@ Add a spare passkey in Settings before replacing your only device. Passkeys are 
 
 ## Deployment
 
-The checked-in Wrangler configuration targets the `lunchju` Worker, the `lunchju.juli.sh` custom domain and its dedicated D1 database. Wrangler manages the domain's DNS record and TLS certificate. The `workers.dev` endpoint and preview URLs are disabled. For another Cloudflare account, create a D1 database and replace its ID, domain route and `APP_ORIGIN` in `wrangler.jsonc`.
+The checked-in Wrangler configuration targets the `lunchju` Worker, the `lunchju.juli.sh` custom domain, its dedicated D1 database and the private `lunchju-images` R2 bucket. Wrangler manages the domain's DNS record and TLS certificate. The `workers.dev` endpoint and preview URLs are disabled. For another Cloudflare account, create a D1 database and replace its ID, domain route and `APP_ORIGIN` in `wrangler.jsonc`. Create the R2 bucket once before the first deployment.
 
 ```sh
 npx wrangler login
+npx wrangler r2 bucket create lunchju-images
 npm run db:migrate:remote
 npx wrangler secret put BOOTSTRAP_TOKEN
 npx wrangler secret put ENCRYPTION_KEY
@@ -66,7 +68,7 @@ npm run deploy
 
 `ENCRYPTION_KEY` must be 32 random bytes encoded as 64 hexadecimal characters. Store it in your password manager: replacing it makes existing Bring tokens unreadable, requiring reconnection. `.dev.vars`, local runtime state and build output are ignored by Git. Production secrets must be installed with Wrangler; `.dev.vars` is only for local development.
 
-Use a fixed HTTPS `APP_ORIGIN` matching the deployed site. OAuth metadata, redirect validation, CSRF checks and passkey verification use this value. `HOME_NAME` and `TIME_ZONE` are ordinary Wrangler variables. Set the time zone to an IANA identifier such as `Europe/Berlin`.
+Use a fixed HTTPS `APP_ORIGIN` matching the deployed site. OAuth metadata, redirect validation, CSRF checks and passkey verification use this value. `HOME_NAME`, `TIME_ZONE`, `BRING_LIST_ID` and `BRING_LIST_NAME` are ordinary Wrangler variables. This deployment pins the Stuttgart list by UUID and name and uses `Europe/Berlin`.
 
 Health endpoint: `GET /api/health`. Do not delete or replace the OAuth Durable Object binding when redeploying; it stores registered clients and grants. Apply future D1 migrations deliberately before deploying code that requires them.
 
@@ -90,6 +92,8 @@ Read access is required. Access tokens last 15 minutes. Check **Keep connected u
 
 The MCP resource `lunchju://catalog` and `get_catalog` tool return the complete recipe, pantry, meal, grocery and preferences catalog. Tool names and JSON schemas are registered from `src/server/operations.ts`; UI requests call that same implementation. Deletion and integration administration require explicit admin scope. Owner-only checks still apply to an agent acting for a member.
 
+Agents can upload or replace recipe images with `upload_recipe_image` (`mcp:write`), read them with `get_recipe_image` (`mcp:read`), and remove them with `delete_recipe_image` (`mcp:admin`). Uploads take `recipeId`, plain base64 `data`, `contentType` and optional `altText`. JPEG, PNG and WebP are supported up to 5 MiB. Reading returns native MCP image content. The catalog includes image metadata; image bytes remain in private R2 storage and require an authenticated request. Website members have matching image controls in recipe details.
+
 Example requests:
 
 - “Read our pantry and preferences, add three vegetarian recipes, and plan dinners for next week.”
@@ -100,11 +104,11 @@ An optional `AGENT_API_KEY` Worker secret provides full owner access for a trust
 
 ## Bring
 
-The native Worker client ports the HTTP protocol from the local `bring-cli` implementation. Set `BRING_API_KEY` to that client's application key as a Worker secret. Then the home owner connects their Bring email/password in Settings and selects one shopping list. LunchJu sends the password to Bring for login and never persists it. Access and refresh tokens are stored with AES-GCM authenticated encryption in D1.
+The native Worker client ports the HTTP protocol from the local `bring-cli` implementation. Set `BRING_API_KEY` to that client's application key as a Worker secret. The home owner connects their Bring email/password in Einstellungen; LunchJu automatically selects the configured Stuttgart list. Both its UUID and name must match, and all other lists are excluded. LunchJu sends the password to Bring for login and never persists it. Access and refresh tokens are stored with AES-GCM authenticated encryption in D1.
 
-Press **Sync** in Groceries or Settings, or call `bring_sync`. A database lease prevents overlapping integration operations. Stable item IDs and queued removals allow retries without generating new remote IDs. Bring failures leave local groceries saved and report a sanitized error.
+Press **Bring abgleichen** in Einkaufen or Einstellungen, or call `bring_sync`. A database lease prevents overlapping integration operations. Stable item IDs and queued removals allow retries without generating new remote IDs. Bring failures leave local groceries saved and report a sanitized error.
 
-Locally edited items take precedence during a sync. New remote items and remote completions are imported. Bring's free-text quantity descriptions are preserved in notes; imported items start as one piece because a description cannot reliably be converted to a numeric quantity. Selecting another list resets remote links and sends currently open local groceries to the new list on the next sync. Synchronization is explicit, without background polling.
+Locally edited items take precedence during a sync. New remote items and remote completions are imported. Bring's free-text quantity descriptions are preserved in notes; imported items start as one piece because a description cannot reliably be converted to a numeric quantity. The list's article language is set to `de-DE`, with Bring's German article catalog mapping display names to stable IDs. Switching to another list is rejected. Synchronization is explicit, without background polling.
 
 ## Food quantities and history
 
@@ -122,7 +126,7 @@ npm run typecheck
 npm run build
 ```
 
-Tests run the production SQL against SQLite and exercise signed WebAuthn registration/login, challenge replay protection, invitation claims, session revocation, permission checks, meal snapshots, quantity allocation, grocery generation, encrypted Bring tokens and mocked Bring synchronization. OAuth tests cover PKCE consent, code exchange/reuse, persistent refresh across object restart, CSRF and revocation.
+Tests run the production SQL against SQLite and exercise signed WebAuthn registration/login, challenge replay protection, invitation claims, session revocation, permission checks, meal snapshots, quantity allocation, grocery generation, encrypted Bring tokens, German article mapping and restrictions to Stuttgart. Image tests cover authenticated multipart uploads, file validation, replacement, removal, storage failures and concurrent updates. MCP tests include image-sized payloads and authentication before body processing. OAuth tests cover PKCE consent, code exchange/reuse, persistent refresh across object restart, CSRF and revocation.
 
 Physical-device passkey UX and a real Bring account connection require a user's browser and account. Protocol tests do not substitute for those final checks.
 

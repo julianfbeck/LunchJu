@@ -3,6 +3,9 @@
 import { encrypt, decrypt } from "./security";
 import { rows, setting, saveSetting } from "./db";
 import { normalizeName } from "../shared";
+import type { Ingredient } from "../shared";
+import { formatQuantity } from "../locale";
+import germanArticles from "./bring-articles.de.json";
 import { HttpError, now, type Env } from "./types";
 
 const BASE = "https://api.getbring.com/rest/";
@@ -22,6 +25,33 @@ type AuthReply = {
   bringListUUID?: string;
 };
 type BringItem = { uuid: string; itemId: string; specification: string };
+type BringList = { listUuid: string; name: string };
+const articleNames: Record<string, string> = germanArticles;
+const articleIds = new Map(
+  Object.entries(articleNames).map(([id, name]) => [normalizeName(name), id]),
+);
+export const germanBringName = (id: string) => articleNames[id] ?? id;
+const bringItemId = (name: string) =>
+  articleIds.get(normalizeName(name)) ?? name;
+function requireStuttgartList(env: Env, listId: string) {
+  if (!env.BRING_LIST_ID)
+    throw new HttpError(
+      503,
+      "Die Bring-Liste Stuttgart ist noch nicht eingerichtet.",
+    );
+  if (listId !== env.BRING_LIST_ID)
+    throw new HttpError(
+      403,
+      "Für diesen Haushalt ist nur die Bring-Liste Stuttgart erlaubt.",
+    );
+}
+function stuttgartLists(env: Env, lists: BringList[]) {
+  return lists.filter(
+    (list) =>
+      list.listUuid === env.BRING_LIST_ID &&
+      list.name === (env.BRING_LIST_NAME ?? "Stuttgart"),
+  );
+}
 type Change = {
   uuid: string;
   itemId: string;
@@ -39,7 +69,10 @@ export async function withBringLock<T>(
     .bind(lease, Date.now())
     .first();
   if (!row)
-    throw new HttpError(409, "Bring is already syncing. Try again shortly.");
+    throw new HttpError(
+      409,
+      "Bring wird gerade abgeglichen. Bitte versuche es gleich noch einmal.",
+    );
   try {
     return await fn();
   } finally {
@@ -60,12 +93,14 @@ async function request<T>(
   if (!env.BRING_API_KEY)
     throw new HttpError(
       503,
-      "Set the BRING_API_KEY Worker secret from your local Bring client.",
+      "Die Bring-Verbindung ist noch nicht vollständig eingerichtet.",
     );
   const headers = new Headers({
     "X-BRING-API-KEY": env.BRING_API_KEY,
     "X-BRING-CLIENT": "android",
     "User-Agent": "LunchJu/1.0",
+    "Accept-Language": "de-DE",
+    "X-BRING-COUNTRY": "DE",
   });
   if (credentials) {
     headers.set("Authorization", `Bearer ${credentials.accessToken}`);
@@ -94,15 +129,15 @@ async function request<T>(
   } catch {
     throw new HttpError(
       502,
-      "Bring could not be reached. Your local groceries are saved.",
+      "Bring ist nicht erreichbar. Deine Einkaufsliste ist gespeichert.",
     );
   }
   if (!response.ok)
     throw new HttpError(
       response.status === 401 ? 401 : 502,
       response.status === 401
-        ? "Bring authorization expired. Reconnect your account."
-        : `Bring returned ${response.status}. Your local groceries are saved.`,
+        ? "Die Bring-Anmeldung ist abgelaufen. Verbinde dein Konto erneut."
+        : `Bring meldet Fehler ${response.status}. Deine Einkaufsliste ist gespeichert.`,
     );
   const text = await response.text();
   return (text ? JSON.parse(text) : undefined) as T;
@@ -110,7 +145,10 @@ async function request<T>(
 async function credentials(env: Env): Promise<Credentials> {
   const stored = await setting(env, "bring_credentials");
   if (!stored)
-    throw new HttpError(409, "Connect a Bring account in Settings first.");
+    throw new HttpError(
+      409,
+      "Verbinde zuerst dein Bring-Konto in den Einstellungen.",
+    );
   let value = await decrypt<Credentials>(env, stored);
   if (value.expiresAt < Date.now() + 60000) {
     const refreshed = await request<AuthReply>(
@@ -134,6 +172,7 @@ async function credentials(env: Env): Promise<Credentials> {
   return value;
 }
 export async function connectBring(env: Env, email: string, password: string) {
+  requireStuttgartList(env, env.BRING_LIST_ID ?? "");
   return withBringLock(env, async () => {
     // Check the encryption configuration before sending credentials upstream.
     await encrypt(env, {});
@@ -151,38 +190,57 @@ export async function connectBring(env: Env, email: string, password: string) {
       refreshToken: auth.refresh_token,
       expiresAt: Date.now() + auth.expires_in * 1000,
     };
-    await saveSetting(env, "bring_credentials", await encrypt(env, value));
-    await env.DB.prepare("DELETE FROM settings WHERE key='bring_list'").run();
-    return {
-      connected: true,
-      ...(await request<{ lists: { listUuid: string; name: string }[] }>(
-        env,
-        `bringusers/${encodeURIComponent(value.uuid)}/lists`,
-        value,
-      )),
-    };
+    const { lists } = await request<{ lists: BringList[] }>(
+      env,
+      `bringusers/${encodeURIComponent(value.uuid)}/lists`,
+      value,
+    );
+    const allowed = stuttgartLists(env, lists);
+    if (allowed.length !== 1)
+      throw new HttpError(
+        403,
+        "Dieses Bring-Konto hat keinen Zugriff auf die Liste Stuttgart.",
+      );
+    await request(
+      env,
+      `bringusersettings/${encodeURIComponent(value.uuid)}/${encodeURIComponent(allowed[0].listUuid)}/listArticleLanguage`,
+      value,
+      new URLSearchParams({ value: "de-DE" }),
+      "POST",
+    );
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO settings(key,value) VALUES ('bring_credentials',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      ).bind(await encrypt(env, value)),
+      env.DB.prepare(
+        "INSERT INTO settings(key,value) VALUES ('bring_list',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      ).bind(allowed[0].listUuid),
+    ]);
+    return { connected: true, lists: allowed };
   });
 }
 export async function bringLists(env: Env) {
   return withBringLock(env, async () => {
     const auth = await credentials(env);
-    return request<{ lists: { listUuid: string; name: string }[] }>(
+    const { lists } = await request<{ lists: BringList[] }>(
       env,
       `bringusers/${encodeURIComponent(auth.uuid)}/lists`,
       auth,
     );
+    return { lists: stuttgartLists(env, lists) };
   });
 }
 export async function chooseBringList(env: Env, listId: string) {
+  requireStuttgartList(env, listId);
   return withBringLock(env, async () => {
     const auth = await credentials(env);
     const { lists } = await request<{
       lists: { listUuid: string; name: string }[];
     }>(env, `bringusers/${encodeURIComponent(auth.uuid)}/lists`, auth);
-    if (!lists.some((list) => list.listUuid === listId))
+    if (!stuttgartLists(env, lists).some((list) => list.listUuid === listId))
       throw new HttpError(
         400,
-        "Choose a list belonging to the connected Bring account.",
+        "Mit diesem Konto ist nur die Bring-Liste Stuttgart verfügbar.",
       );
     await env.DB.batch([
       env.DB.prepare(
@@ -215,7 +273,11 @@ export async function syncBring(env: Env) {
     const auth = await credentials(env),
       list = await setting(env, "bring_list");
     if (!list)
-      throw new HttpError(409, "Choose a Bring list in Settings first.");
+      throw new HttpError(
+        409,
+        "Verbinde zuerst die Bring-Liste Stuttgart in den Einstellungen.",
+      );
+    requireStuttgartList(env, list);
     const remote = await request<{
       items: { purchase: BringItem[]; recently: BringItem[] };
     }>(env, `v2/bringlists/${encodeURIComponent(list)}`, auth);
@@ -225,7 +287,7 @@ export async function syncBring(env: Env) {
     const removals = await rows(env.DB, "SELECT * FROM bring_removals");
     const changes: Change[] = removals.map((row) => ({
       uuid: String(row.uuid),
-      itemId: String(row.name),
+      itemId: bringItemId(String(row.name)),
       spec: "",
       operation: "REMOVE",
     }));
@@ -239,8 +301,8 @@ export async function syncBring(env: Env) {
         (!item.bring_uuid
           ? purchase.find(
               (entry) =>
-                normalizeName(entry.itemId) === item.normalized_name &&
-                !matched.has(entry.uuid),
+                normalizeName(germanBringName(entry.itemId)) ===
+                  item.normalized_name && !matched.has(entry.uuid),
             )
           : undefined);
       if (found) matched.add(found.uuid);
@@ -253,8 +315,8 @@ export async function syncBring(env: Env) {
       ) {
         updates.push(
           env.DB.prepare(
-            "UPDATE groceries SET checked=1,updated_at=?,bring_synced_at=? WHERE id=? AND updated_at=?",
-          ).bind(time, time, item.id, item.updated_at),
+            "UPDATE groceries SET checked=1,updated_at=?,bring_synced_at=? WHERE id=? AND updated_at=? AND bring_synced_at IS ?",
+          ).bind(time, time, item.id, item.updated_at, item.bring_synced_at),
         );
         pulled++;
         continue;
@@ -268,15 +330,15 @@ export async function syncBring(env: Env) {
       )
         changes.push({
           uuid,
-          itemId: String(item.name),
-          spec: `${item.quantity} ${item.unit}${item.notes ? `, ${item.notes}` : ""}`,
+          itemId: found?.itemId ?? bringItemId(String(item.name)),
+          spec: `${formatQuantity(Number(item.quantity), item.unit as Ingredient["unit"])}${item.notes ? `, ${item.notes}` : ""}`,
           operation: item.checked ? "TO_RECENTLY" : "TO_PURCHASE",
         });
       matched.add(uuid);
       updates.push(
         env.DB.prepare(
-          "UPDATE groceries SET bring_uuid=?,bring_synced_at=? WHERE id=? AND updated_at=?",
-        ).bind(uuid, time, item.id, item.updated_at),
+          "UPDATE groceries SET bring_uuid=?,bring_synced_at=? WHERE id=? AND updated_at=? AND bring_synced_at IS ?",
+        ).bind(uuid, time, item.id, item.updated_at, item.bring_synced_at),
       );
     }
     for (const item of purchase.filter((item) => !matched.has(item.uuid))) {
@@ -285,8 +347,8 @@ export async function syncBring(env: Env) {
           `INSERT INTO groceries(id,name,normalized_name,quantity,unit,notes,bring_uuid,bring_synced_at,updated_at) VALUES (?,?,?,1,'piece',?,?,?,?) ON CONFLICT(normalized_name,unit) WHERE checked=0 DO NOTHING`,
         ).bind(
           crypto.randomUUID(),
-          item.itemId,
-          normalizeName(item.itemId),
+          germanBringName(item.itemId),
+          normalizeName(germanBringName(item.itemId)),
           item.specification ?? "",
           item.uuid,
           time,

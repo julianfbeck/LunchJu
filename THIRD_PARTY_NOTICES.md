@@ -33,3 +33,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Bring German article labels
+
+`src/server/bring-articles.de.json` contains the German article labels from Bring's [German article catalog](https://web.getbring.com/locale/articles.de-DE.json), retrieved on 2026-10-20. These labels map Bring article IDs to German display names. The MIT notices above apply to the source code adaptations, not to this catalog data.

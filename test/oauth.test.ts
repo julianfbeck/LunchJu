@@ -70,7 +70,7 @@ async function oauthFixture(
   });
   expect(consent.status).toBe(200);
   const returnHtml = await consent.text();
-  expect(returnHtml).toContain("You're connected.");
+  expect(returnHtml).toContain("Verbindung hergestellt.");
   const callback = new URL(
     returnHtml.match(/content="0;url=([^"]+)"/)![1].replaceAll("&#38;", "&"),
   );

@@ -3,6 +3,7 @@ export interface Env {
   DB: D1Database;
   OAUTH_STATE: DurableObjectNamespace;
   ASSETS: Fetcher;
+  IMAGES?: R2Bucket;
   APP_ORIGIN: string;
   HOME_NAME?: string;
   TIME_ZONE?: string;
@@ -10,6 +11,8 @@ export interface Env {
   ENCRYPTION_KEY?: string;
   AGENT_API_KEY?: string;
   BRING_API_KEY?: string;
+  BRING_LIST_ID?: string;
+  BRING_LIST_NAME?: string;
 }
 export type Access = { user: User; scopes: string[]; agent: boolean };
 export class HttpError extends Error {
@@ -28,6 +31,9 @@ export function origin(env: Env) {
     (url.protocol !== "https:" &&
       !["localhost", "127.0.0.1"].includes(url.hostname))
   )
-    throw new HttpError(503, "Configure a canonical HTTPS APP_ORIGIN.");
+    throw new HttpError(
+      503,
+      "Die Website-Adresse ist noch nicht richtig eingerichtet.",
+    );
   return url.origin;
 }
