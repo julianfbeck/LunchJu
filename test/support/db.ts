@@ -24,6 +24,12 @@ export function fixture() {
       "utf8",
     ),
   );
+  sqlite.exec(
+    readFileSync(
+      new URL("../../migrations/0004_user_language.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   class Statement {
     values: unknown[] = [];
     constructor(public sql: string) {}
@@ -75,6 +81,7 @@ export function fixture() {
     id: crypto.randomUUID(),
     name: "Alex",
     role: "owner" as const,
+    language: null,
   };
   sqlite
     .prepare("INSERT INTO users(id,name,role) VALUES (?,?,?)")

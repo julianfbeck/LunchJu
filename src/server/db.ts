@@ -102,23 +102,40 @@ export async function saveSetting(env: Env, key: string, value: string) {
     .bind(key, value)
     .run();
 }
+export async function accountLanguage(env: Env, userId: string) {
+  const row = await env.DB.prepare(
+    "SELECT language FROM users WHERE id=? AND active=1",
+  )
+    .bind(userId)
+    .first<{ language: "de" | "en" | null }>();
+  return row?.language === "en" ? "en" : "de";
+}
 export async function catalog(
   env: Env,
   access: Access,
 ): Promise<Catalog & { preferences: unknown }> {
-  const [recipes, pantry, meals, groceries, connected, listId, preferences] =
-    await Promise.all([
-      rows(env.DB, "SELECT * FROM recipes ORDER BY favorite DESC,name"),
-      rows(
-        env.DB,
-        "SELECT * FROM pantry ORDER BY expires_on IS NULL,expires_on,name",
-      ),
-      rows(env.DB, "SELECT * FROM meals ORDER BY date,slot"),
-      rows(env.DB, "SELECT * FROM groceries ORDER BY checked,name"),
-      setting(env, "bring_credentials"),
-      setting(env, "bring_list"),
-      setting(env, "preferences"),
-    ]);
+  const [
+    recipes,
+    pantry,
+    meals,
+    groceries,
+    connected,
+    listId,
+    preferences,
+    language,
+  ] = await Promise.all([
+    rows(env.DB, "SELECT * FROM recipes ORDER BY favorite DESC,name"),
+    rows(
+      env.DB,
+      "SELECT * FROM pantry ORDER BY expires_on IS NULL,expires_on,name",
+    ),
+    rows(env.DB, "SELECT * FROM meals ORDER BY date,slot"),
+    rows(env.DB, "SELECT * FROM groceries ORDER BY checked,name"),
+    setting(env, "bring_credentials"),
+    setting(env, "bring_list"),
+    setting(env, "preferences"),
+    accountLanguage(env, access.user.id),
+  ]);
   return {
     recipes: recipes.map(recipe),
     pantry: pantry.map(pantryItem),
@@ -127,13 +144,14 @@ export async function catalog(
     home: {
       name: env.HOME_NAME ?? "Stuttgart",
       timeZone: env.TIME_ZONE ?? "Europe/Berlin",
-      locale: "de-DE",
+      locale: language === "en" ? "en-GB" : "de-DE",
     },
+    contentLanguage: language,
     bring: { connected: !!connected, listId },
     preferences: preferences
       ? JSON.parse(preferences)
       : { diet: "", allergies: [], notes: "" },
-    user: access.user,
+    user: { ...access.user, language },
   };
 }
 export async function audit(

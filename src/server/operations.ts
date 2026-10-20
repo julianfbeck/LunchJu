@@ -27,6 +27,7 @@ import {
   deleteItem,
   saveSetting,
   audit,
+  accountLanguage,
 } from "./db";
 import {
   connectBring,
@@ -80,7 +81,7 @@ const range = z
   );
 export const operations = {
   get_catalog: operation(
-    "Liest den vollständigen Katalog für Stuttgart: Rezepte, Vorräte, Mahlzeiten, Essensverlauf, Einkaufsliste, Ernährungswünsche und Bring-Status. Zugangsdaten werden nie ausgegeben.",
+    "Liest den vollständigen Katalog für Stuttgart einschließlich contentLanguage (de/en), der aktuellen Kontosprache für neue Rezepte und Zutaten. Vor dem Anlegen neuer Inhalte lesen. Enthält Rezepte, Vorräte, Mahlzeiten, Essensverlauf, Einkaufsliste, Ernährungswünsche und Bring-Status. Zugangsdaten werden nie ausgegeben.",
     "mcp:read",
     empty,
     async (_, c) => catalog(c.env, c.access),
@@ -92,7 +93,7 @@ export const operations = {
     async (input, c) => loadRecipe(c.env, input.id),
   ),
   create_recipe: operation(
-    "Fügt ein deutsches Rezept hinzu. Mengen beziehen sich auf die angegebene Portionszahl; Einheiten immer ausdrücklich angeben.",
+    "Fügt ein Rezept in der gespeicherten contentLanguage hinzu, einschließlich Namen, Zutaten, Zubereitung, Notizen und Bildbeschreibungen. Die aktuelle Sprache zuerst mit get_catalog oder get_language lesen. Mengen beziehen sich auf die angegebene Portionszahl; Einheiten immer ausdrücklich angeben.",
     "mcp:write",
     recipeSchema,
     async (input, c) => saveRecipe(c.env, input),
@@ -128,7 +129,7 @@ export const operations = {
     },
   ),
   set_recipe_scaling: operation(
-    "Ersetzt alle besonderen Skalierungsregeln eines Rezepts. ingredientIndex ist nullbasiert; ingredientName und ingredientUnit müssen zur aktuellen Zutat passen. mode=linear skaliert nach Personen, fixed behält die Grundmenge bei. roundUpTo rundet in der Einheit der Zutat auf, z. B. 1 für ganze Eier. note und notes enthalten deutsche Kochhinweise; sie verändern keine Mengen automatisch. rules=[] setzt alle Zutaten auf normale Skalierung zurück. Bestehende Mahlzeiten behalten ihren Zutatenstand.",
+    "Ersetzt alle besonderen Skalierungsregeln eines Rezepts. ingredientIndex ist nullbasiert; ingredientName und ingredientUnit müssen zur aktuellen Zutat passen. mode=linear skaliert nach Personen, fixed behält die Grundmenge bei. roundUpTo rundet in der Einheit der Zutat auf, z. B. 1 für ganze Eier. note und notes enthalten Kochhinweise in der gespeicherten contentLanguage; sie verändern keine Mengen automatisch. rules=[] setzt alle Zutaten auf normale Skalierung zurück. Bestehende Mahlzeiten behalten ihren Zutatenstand.",
     "mcp:write",
     z
       .object({
@@ -208,7 +209,7 @@ export const operations = {
     },
   ),
   scale_recipe: operation(
-    "Berechnet Zutaten für die gewünschte Personenzahl einschließlich gespeicherter Festmengen und Aufrundungen. Gibt deutsche Skalierungshinweise und die ursprünglichen Zubereitungsschritte zurück. Ändert das Grundrezept nicht; Kochzeiten werden nicht automatisch skaliert.",
+    "Berechnet Zutaten für die gewünschte Personenzahl einschließlich gespeicherter Festmengen und Aufrundungen. Gibt gespeicherte Skalierungshinweise und die ursprünglichen Zubereitungsschritte unverändert zurück. Ändert das Grundrezept nicht; Kochzeiten werden nicht automatisch skaliert.",
     "mcp:read",
     z.object({ recipeId: id, servings: servingsSchema }),
     async (input, c) => {
@@ -232,7 +233,7 @@ export const operations = {
     async (input, c) => deleteItem(c.env, "recipes", input.id),
   ),
   upload_recipe_image: operation(
-    "Lädt ein Rezeptbild hoch oder ersetzt es. data enthält reines Base64 ohne data-URL-Präfix, contentType ist image/jpeg, image/png oder image/webp. Höchstens 5 MB; altText beschreibt das Bild auf Deutsch.",
+    "Lädt ein Rezeptbild hoch oder ersetzt es. data enthält reines Base64 ohne data-URL-Präfix, contentType ist image/jpeg, image/png oder image/webp. Höchstens 5 MB; altText beschreibt das Bild in der gespeicherten contentLanguage.",
     "mcp:write",
     z.object({
       recipeId: id,
@@ -250,7 +251,7 @@ export const operations = {
       ),
   ),
   get_recipe_image: operation(
-    "Liest das Rezeptbild als Bildinhalt mit deutscher Beschreibung. Benötigt Lesezugriff auf den Haushalt Stuttgart.",
+    "Liest das Rezeptbild als Bildinhalt mit der gespeicherten Beschreibung. Benötigt Lesezugriff auf den Haushalt Stuttgart.",
     "mcp:read",
     z.object({ recipeId: id }),
     async (input, c) => recipeImageData(c.env, input.recipeId),
@@ -393,6 +394,28 @@ export const operations = {
     "mcp:write",
     range,
     async (input, c) => groceryPlan(c.env, input.from, input.to),
+  ),
+  get_language: operation(
+    "Liest deine aktuelle Kontosprache (de/en). Neue Rezepte und Zutaten in dieser Sprache verfassen; technische Enum-Werte bleiben unverändert.",
+    "mcp:read",
+    empty,
+    async (_, c) => ({
+      language: await accountLanguage(c.env, c.access.user.id),
+    }),
+  ),
+  set_language: operation(
+    "Speichert die Sprache (de/en) für dein eigenes Konto und dessen Agenten. Übersetzt keine vorhandenen Rezepte und verändert keine anderen Mitglieder.",
+    "mcp:write",
+    z.object({ language: z.enum(["de", "en"]) }),
+    async ({ language }, c) => {
+      const user = await c.env.DB.prepare(
+        "UPDATE users SET language=? WHERE id=? AND active=1 RETURNING language",
+      )
+        .bind(language, c.access.user.id)
+        .first<{ language: "de" | "en" }>();
+      if (!user) throw new HttpError(401, "Melde dich mit deinem Passkey an.");
+      return user;
+    },
   ),
   set_preferences: operation(
     "Speichert Ernährungsweise, Allergien und Kochhinweise für die gemeinsame Planung in Stuttgart.",

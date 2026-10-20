@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Language } from "./i18n";
 z.config(z.locales.de());
 
 export const text = z.string().trim().min(1).max(160);
@@ -109,13 +110,19 @@ export type Grocery = z.infer<typeof grocerySchema> & {
   bringUuid: string | null;
   updatedAt: string;
 };
-export type User = { id: string; name: string; role: "owner" | "member" };
+export type User = {
+  id: string;
+  name: string;
+  role: "owner" | "member";
+  language: Language | null;
+};
 export type Catalog = {
   recipes: Recipe[];
   pantry: PantryItem[];
   meals: Meal[];
   groceries: Grocery[];
-  home: { name: string; timeZone: string; locale: "de-DE" };
+  home: { name: string; timeZone: string; locale: "de-DE" | "en-GB" };
+  contentLanguage: Language;
   bring: { connected: boolean; listId: string | null };
   user: User;
 };

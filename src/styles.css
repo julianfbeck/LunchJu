@@ -267,7 +267,7 @@ textarea {
   margin-left: auto;
   margin-right: 12px;
 }
-.mobile-header .language-selector > span {
+.mobile-header .language-selector > .language-label {
   position: absolute;
   width: 1px;
   height: 1px;

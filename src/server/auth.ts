@@ -10,6 +10,7 @@ import type {
 } from "@simplewebauthn/server";
 import { z } from "zod";
 import type { User } from "../shared";
+import { languageFromCookie } from "../i18n";
 import {
   b64,
   unb64,
@@ -37,7 +38,7 @@ export async function currentUser(
   const token = cookie(request, "lunchju_session");
   if (!token) return null;
   return env.DB.prepare(
-    `SELECT u.id,u.name,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`,
+    `SELECT u.id,u.name,u.role,u.language FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`,
   )
     .bind(await hash(token), Date.now())
     .first<User>();
@@ -149,6 +150,7 @@ export async function authRoute(
         id: crypto.randomUUID(),
         name: data.name,
         role: "member",
+        language: languageFromCookie(request.headers.get("Cookie")),
       },
       label: data.label,
     };
@@ -227,14 +229,20 @@ export async function authRoute(
     if (data.bootstrap)
       writes.push(
         env.DB.prepare(
-          "INSERT INTO users(id,name,role) SELECT ?,?,'owner' WHERE NOT EXISTS(SELECT 1 FROM users WHERE role='owner')",
-        ).bind(data.user.id, data.user.name),
+          "INSERT INTO users(id,name,role,language) SELECT ?,?,'owner',? WHERE NOT EXISTS(SELECT 1 FROM users WHERE role='owner')",
+        ).bind(data.user.id, data.user.name, data.user.language ?? "de"),
       );
     else if (data.invitation) {
       writes.push(
         env.DB.prepare(
-          "INSERT INTO users(id,name,role) SELECT ?,?,'member' WHERE EXISTS(SELECT 1 FROM invitations WHERE token_hash=? AND used_at IS NULL AND expires_at>?)",
-        ).bind(data.user.id, data.user.name, data.invitation, Date.now()),
+          "INSERT INTO users(id,name,role,language) SELECT ?,?,'member',? WHERE EXISTS(SELECT 1 FROM invitations WHERE token_hash=? AND used_at IS NULL AND expires_at>?)",
+        ).bind(
+          data.user.id,
+          data.user.name,
+          data.user.language ?? "de",
+          data.invitation,
+          Date.now(),
+        ),
       );
       writes.push(
         env.DB.prepare(
@@ -278,7 +286,7 @@ export async function authRoute(
     const pending = await takeChallenge(env, request, "login");
     const response = body as unknown as AuthenticationResponseJSON;
     const key = await env.DB.prepare(
-      "SELECT p.*,u.name AS user_name,u.role FROM passkeys p JOIN users u ON u.id=p.user_id WHERE p.id=? AND u.active=1",
+      "SELECT p.*,u.name AS user_name,u.role,u.language FROM passkeys p JOIN users u ON u.id=p.user_id WHERE p.id=? AND u.active=1",
     )
       .bind(response.id)
       .first<{
@@ -288,6 +296,7 @@ export async function authRoute(
         counter: number;
         user_name: string;
         role: User["role"];
+        language: User["language"];
       }>();
     if (!key)
       throw new HttpError(
@@ -322,6 +331,7 @@ export async function authRoute(
       id: key.user_id,
       name: key.user_name,
       role: key.role,
+      language: key.language,
     });
   }
   throw new HttpError(404, "Anmeldepfad nicht gefunden.");

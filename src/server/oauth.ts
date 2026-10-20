@@ -164,13 +164,14 @@ export class LunchJuOAuth extends DurableObject<Env> {
     return this.queue(() => this.storageAdapter.purgeExpired());
   }
   private async consentOrGrants(request: Request): Promise<Response> {
-    const language = languageFromCookie(request.headers.get("Cookie"));
+    const user = await currentUser(this.env, request);
+    const language =
+      user?.language ?? languageFromCookie(request.headers.get("Cookie"));
     const t = (message: string, ...values: string[]) =>
       escape(translate(language, message, ...values));
     const render = (body: string, headers?: Headers, status = 200) =>
       page(body, headers, status, language);
-    const user = await currentUser(this.env, request),
-      url = new URL(request.url),
+    const url = new URL(request.url),
       issuer = origin(this.env);
     if (!user)
       return render(
@@ -180,7 +181,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
       );
     const oauth = this.oauthEnv.OAUTH_PROVIDER!;
     if (url.pathname === "/oauth/grants")
-      return this.grants(request, user.id, oauth);
+      return this.grants(request, user.id, oauth, language);
     if (url.pathname !== "/oauth/authorize")
       return new Response("Nicht gefunden.", { status: 404 });
     if (request.method === "GET") {
@@ -288,8 +289,12 @@ export class LunchJuOAuth extends DurableObject<Env> {
       );
     }
   }
-  private async grants(request: Request, subject: string, oauth: OAuthHelpers) {
-    const language = languageFromCookie(request.headers.get("Cookie"));
+  private async grants(
+    request: Request,
+    subject: string,
+    oauth: OAuthHelpers,
+    language: Language,
+  ) {
     const t = (message: string) => escape(translate(language, message));
     if (request.method === "GET") {
       const grants = [];

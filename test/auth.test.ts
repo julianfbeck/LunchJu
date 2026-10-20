@@ -31,7 +31,11 @@ describe("Passkey-only authentication", () => {
       ["Sam", "Another Sam"].map(async (name) => {
         const options = await authRoute(
           f.env,
-          req("/api/auth/register/options", { name, token }),
+          req(
+            "/api/auth/register/options",
+            { name, token },
+            "lunchju_language=en",
+          ),
           "/api/auth/register/options",
         );
         return {
@@ -113,6 +117,9 @@ describe("Passkey-only authentication", () => {
     expect(
       f.sqlite.prepare("SELECT name FROM users WHERE role='member'").all(),
     ).toEqual([{ name: "Sam" }]);
+    expect(
+      f.sqlite.prepare("SELECT language FROM users WHERE role='member'").get(),
+    ).toEqual({ language: "en" });
     expect(f.sqlite.prepare("SELECT * FROM passkeys").all()).toHaveLength(1);
   });
   it("verifies a real signed WebAuthn assertion, creates a revocable session, and rejects challenge replay", async () => {

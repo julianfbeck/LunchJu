@@ -348,5 +348,12 @@
   "Zugriff widerrufen": "Revoke access",
   "Noch keine Agenten verbunden.": "No agents connected yet.",
   "Wähle eine gültige Personenzahl bis 100.": "Choose a valid number of people up to 100.",
-  "Die gewählte Personenzahl ergibt eine ungültige Zutatenmenge.": "The selected number of people results in an invalid ingredient quantity."
+  "Die gewählte Personenzahl ergibt eine ungültige Zutatenmenge.": "The selected number of people results in an invalid ingredient quantity.",
+  "Gilt für dein Konto und deinen Agenten. Neue Rezepte und Zutaten werden in dieser Sprache angelegt.": "Applies to your account and your agent. New recipes and ingredients use this language.",
+  "LunchJu als App": "LunchJu as an app",
+  "App installieren": "Install app",
+  "Auf dem iPhone: Öffne LunchJu in Safari, tippe auf Teilen und dann auf „Zum Home-Bildschirm“.": "On iPhone: open LunchJu in Safari, tap Share, then Add to Home Screen.",
+  "Öffne das Browsermenü und wähle „App installieren“ oder „Zum Startbildschirm hinzufügen“.": "Open the browser menu and choose Install app or Add to Home screen.",
+  "Die App benötigt eine Internetverbindung für Rezepte, Planung und Änderungen.": "The app needs an internet connection for recipes, planning and changes.",
+  "LunchJu ist installiert.": "LunchJu is installed."
 }

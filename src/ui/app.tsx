@@ -1,4 +1,5 @@
 import { useI18n, LanguageSelector } from "./language";
+import { InstallApp } from "./pwa";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -100,7 +101,7 @@ const tabs = [
 ] as const;
 const units = ["g", "kg", "ml", "l", "piece", "tsp", "tbsp", "cup"];
 export function KitchenApp() {
-  const { t } = useI18n();
+  const { t, bindAccount } = useI18n();
   const client = useQueryClient();
   const session = useQuery({
     queryKey: ["session"],
@@ -113,6 +114,10 @@ export function KitchenApp() {
   });
   const [tab, setTab] = useState<Tab>("today"),
     [notice, setNotice] = useState("");
+  const user = session.data?.user;
+  useEffect(() => {
+    if (user !== undefined) bindAccount(user);
+  }, [user?.id, user?.language, !!session.data, bindAccount]);
   useEffect(() => {
     if (notice) {
       const timer = setTimeout(() => setNotice(""), 6500);
@@ -2314,7 +2319,16 @@ function Settings({
   return (
     <div className="settings-grid">
       <section className="settings-card">
+        <h2>{t("LunchJu als App")}</h2>
+        <InstallApp />
+      </section>
+      <section className="settings-card">
         <h2>{t("Sprache")}</h2>
+        <p>
+          {t(
+            "Gilt für dein Konto und deinen Agenten. Neue Rezepte und Zutaten werden in dieser Sprache angelegt.",
+          )}
+        </p>
         <LanguageSelector />
       </section>
       <section className="settings-card agent-settings">

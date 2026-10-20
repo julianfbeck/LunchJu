@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#ffffff" />
+    <title>LunchJu · Offline</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        color-scheme: light;
+        font:
+          16px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        color: #272923;
+        background: #fff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        max-width: 520px;
+        margin: 12vh auto;
+        padding: 24px;
+      }
+      .brand {
+        font-size: 26px;
+        font-weight: 750;
+        letter-spacing: -1px;
+        border-bottom: 1px solid #e0e1da;
+        padding-bottom: 24px;
+        margin-bottom: 40px;
+      }
+      h1 {
+        font-size: 30px;
+        line-height: 1.2;
+        letter-spacing: -1px;
+      }
+      p {
+        color: #6d7067;
+      }
+      a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        background: #ad3e29;
+        color: #fff;
+        border-radius: 4px;
+        text-decoration: none;
+        padding: 10px 18px;
+        margin-top: 16px;
+      }
+      html[lang="de"] [lang="en"],
+      html[lang="en"] [lang="de"] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="brand">lunchju</div>
+    <main>
+      <div lang="de">
+        <h1>Du bist gerade offline.</h1>
+        <p>
+          Verbinde dich mit dem Internet, um Rezepte, Vorräte und deinen
+          Wochenplan zu öffnen. Änderungen benötigen eine Verbindung.
+        </p>
+        <a href="/">Erneut versuchen</a>
+      </div>
+      <div lang="en">
+        <h1>You are currently offline.</h1>
+        <p>
+          Connect to the internet to open recipes, pantry items and your weekly
+          plan. Changes require a connection.
+        </p>
+        <a href="/">Try again</a>
+      </div>
+    </main>
+    <script>
+      document.documentElement.lang = document.cookie
+        .split(";")
+        .some((part) => part.trim() === "lunchju_language=en")
+        ? "en"
+        : "de";
+    </script>
+  </body>
+</html>
