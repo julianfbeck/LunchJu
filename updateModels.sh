@@ -1,1 +1,0 @@
-npx openapi-typescript https://cacgduwoxbredruegmhs.supabase.co/rest/v1/?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlhdCI6MTY0NDA2MzI4OSwiZXhwIjoxOTU5NjM5Mjg5fQ.5Fd0FqrL_eLfNhk2hz0FVE20bi2CYUkoJkLdgv1TQkk --output ./src/lib/models.ts
