@@ -1,0 +1,118 @@
+import handler from "@tanstack/react-start/server-entry";
+import { ZodError } from "zod";
+import { authRoute, requireUser } from "./server/auth";
+import { runOperation } from "./server/operations";
+import { handleMcp } from "./server/mcp";
+import { isOAuthPath } from "./server/oauth";
+import {
+  readJson,
+  requireSameOrigin,
+  boundedBody,
+  rateLimit,
+} from "./server/security";
+import { HttpError, origin, type Env } from "./server/types";
+export { LunchJuOAuth } from "./server/oauth";
+
+export async function cleanup(env: Env) {
+  await env.DB.batch(
+    ["sessions", "challenges", "invitations", "rate_limits"].map((table) =>
+      env.DB.prepare(`DELETE FROM ${table} WHERE expires_at<?`).bind(
+        table === "rate_limits" ? Math.floor(Date.now() / 1000) : Date.now(),
+      ),
+    ),
+  );
+}
+export async function routeRequest(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (url.pathname === "/api/health")
+    return Response.json({ ok: true, service: "lunchju" });
+  if (isOAuthPath(url.pathname))
+    return env.OAUTH_STATE.get(
+      env.OAUTH_STATE.idFromName("lunchju-oauth-v1"),
+    ).fetch(request);
+  if (url.pathname === "/mcp") {
+    if (
+      request.headers.get("Origin") &&
+      request.headers.get("Origin") !== origin(env)
+    )
+      throw new HttpError(403, "Origin not allowed.");
+    const buffered = await boundedBody(request, 262144);
+    return handleMcp(buffered, env, ctx);
+  }
+  if (url.pathname.startsWith("/api/auth/"))
+    return authRoute(env, request, url.pathname);
+  if (url.pathname.startsWith("/api/")) {
+    const user = await requireUser(env, request);
+    if (request.method !== "POST") throw new HttpError(405, "Use POST.");
+    requireSameOrigin(request, env);
+    await rateLimit(env, `api:${user.id}`, 180);
+    const body = (await readJson(request)) as {
+      operation?: unknown;
+      input?: unknown;
+    };
+    if (url.pathname !== "/api/action" || typeof body.operation !== "string")
+      throw new HttpError(404, "Route not found.");
+    return Response.json(
+      await runOperation(body.operation, body.input ?? {}, env, {
+        user,
+        scopes: ["mcp:read", "mcp:write", "mcp:admin"],
+        agent: false,
+      }),
+    );
+  }
+  return null;
+}
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    try {
+      const response =
+        (await routeRequest(request, env, ctx)) ??
+        (await handler.fetch(request));
+      const headers = new Headers(response.headers);
+      headers.set("X-Content-Type-Options", "nosniff");
+      headers.set("Referrer-Policy", "same-origin");
+      headers.set("X-Frame-Options", "DENY");
+      if (new URL(request.url).pathname.startsWith("/api/"))
+        headers.set("Cache-Control", "no-store");
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    } catch (error) {
+      if (error instanceof ZodError)
+        return Response.json(
+          {
+            error: error.issues
+              .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+              .join("; "),
+          },
+          { status: 400, headers: { "Cache-Control": "no-store" } },
+        );
+      if (error instanceof HttpError)
+        return Response.json(
+          { error: error.message },
+          { status: error.status, headers: { "Cache-Control": "no-store" } },
+        );
+      console.error(
+        "LunchJu request failed:",
+        error instanceof Error
+          ? origin(env).startsWith("http://localhost:")
+            ? error.stack
+            : error.name
+          : "UnknownError",
+      );
+      return Response.json(
+        { error: "Something went wrong. Please try again." },
+        { status: 500, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  },
+  scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(cleanup(env));
+  },
+};
