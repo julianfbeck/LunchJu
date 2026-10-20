@@ -7,7 +7,7 @@ Live app: [lunchju.juli.sh](https://lunchju.juli.sh)
 ## What it does
 
 - One home with multiple invited members. Everyone signs in with a passkey; there are no password accounts.
-- Recipe creation, editing, favorites, serving scaling, private recipe images and pantry availability checks.
+- Recipe creation, editing, favorites, private images with list previews and pantry availability checks. Person controls scale ingredients directly in the list and carry the selected count into meal planning.
 - Dated meal planning and an editable record of meals eaten. Ingredients are snapshotted so deleting a recipe preserves food history.
 - Pantry lots with quantities, units, fridge/freezer/pantry storage and best-before dates.
 - Shopping lists generated from planned meals. Compatible units are converted, stock is allocated once by meal date and expiry, and repeated generation does not add the same quantities again.
@@ -94,6 +94,27 @@ The MCP resource `lunchju://catalog` and `get_catalog` tool return the complete 
 
 Agents can upload or replace recipe images with `upload_recipe_image` (`mcp:write`), read them with `get_recipe_image` (`mcp:read`), and remove them with `delete_recipe_image` (`mcp:admin`). Uploads take `recipeId`, plain base64 `data`, `contentType` and optional `altText`. JPEG, PNG and WebP are supported up to 5 MiB. Reading returns native MCP image content. The catalog includes image metadata; image bytes remain in private R2 storage and require an authenticated request. Website members have matching image controls in recipe details.
 
+`scale_recipe` (`mcp:read`) accepts `recipeId` and `servings` and returns scaled ingredients, the original preparation steps, cooking time and scaling notes without changing the base recipe. `set_recipe_scaling` (`mcp:write`) replaces the recipe's special scaling rules and notes. Identify each rule by its zero-based `ingredientIndex`, current `ingredientName` and `ingredientUnit`; stale references are rejected. For example:
+
+```json
+{
+  "recipeId": "RECIPE_UUID",
+  "notes": "Ab 6 Personen in zwei Pfannen braten. Garzeit bleibt gleich.",
+  "rules": [
+    {
+      "ingredientIndex": 2,
+      "ingredientName": "Eier",
+      "ingredientUnit": "piece",
+      "mode": "linear",
+      "roundUpTo": 1,
+      "note": "Ganze Eier verwenden."
+    }
+  ]
+}
+```
+
+`mode=linear` multiplies by the serving ratio; `mode=fixed` keeps the ingredient's base quantity. Optional `roundUpTo` rounds upward in that ingredient's unit after scaling. `rules: []` restores proportional scaling for all ingredients. `notes` and per-ingredient `note` are displayed as cooking guidance and never interpreted as quantity formulas. Website members can edit the same settings under each ingredient's **Skalierung** control and the recipe's scaling notes. Recipe updates from older clients preserve omitted notes and rules for ingredients that still match uniquely by name and unit.
+
 Example requests:
 
 - “Read our pantry and preferences, add three vegetarian recipes, and plan dinners for next week.”
@@ -114,6 +135,8 @@ Locally edited items take precedence during a sync. New remote items and remote 
 
 Ingredient names match after Unicode, case and whitespace normalization. There is no fuzzy synonym matching. Mass and volume are separate; the app never guesses a food's density. A cup is defined as 240 ml, a tablespoon as 15 ml, and a teaspoon as 5 ml.
 
+Ingredient previews, MCP scaling, pantry checks and meal snapshots use the same scaling function. Cooking time and prose instructions stay as written; special preparation requirements belong in the scaling notes. Shopping is generated from each meal's saved ingredients. Existing meals retain their snapshots when recipe rules change. New meals also retain the original ingredient quantities and rules, so rescaling a meal after deleting its recipe does not compound earlier rounding.
+
 Meal-plan generation uses the earliest-expiring usable stock first and excludes stock that expires before the meal date. Existing shopping-list quantities are treated as a minimum: generation does not remove manually requested extras or automatically shrink old entries after a plan changes.
 
 Marking a meal eaten does not automatically consume pantry stock. Checking a grocery does not automatically create pantry stock. Update stock explicitly through the UI or agent, so uncertain serving sizes and purchase amounts do not silently corrupt inventory. Food history records meals and servings; nutrition or calorie calculation is not included.
@@ -126,7 +149,7 @@ npm run typecheck
 npm run build
 ```
 
-Tests run the production SQL against SQLite and exercise signed WebAuthn registration/login, challenge replay protection, invitation claims, session revocation, permission checks, meal snapshots, quantity allocation, grocery generation, encrypted Bring tokens, German article mapping and restrictions to Stuttgart. Image tests cover authenticated multipart uploads, file validation, replacement, removal, storage failures and concurrent updates. MCP tests include image-sized payloads and authentication before body processing. OAuth tests cover PKCE consent, code exchange/reuse, persistent refresh across object restart, CSRF and revocation.
+Tests run the production SQL against SQLite and exercise signed WebAuthn registration/login, challenge replay protection, invitation claims, session revocation, permission checks, meal snapshots, quantity allocation, grocery generation, encrypted Bring tokens, German article mapping and restrictions to Stuttgart. Scaling tests cover fixed amounts, rounding, stock checks, meal and shopping consistency, older clients, stale references and rescaling after recipe deletion. Image tests cover authenticated multipart uploads, file validation, replacement, removal, storage failures and concurrent updates. MCP tests include image-sized payloads and authentication before body processing. OAuth tests cover PKCE consent, code exchange/reuse, persistent refresh across object restart, CSRF and revocation.
 
 Physical-device passkey UX and a real Bring account connection require a user's browser and account. Protocol tests do not substitute for those final checks.
 

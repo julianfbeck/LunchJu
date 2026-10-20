@@ -18,6 +18,12 @@ export function fixture() {
       "utf8",
     ),
   );
+  sqlite.exec(
+    readFileSync(
+      new URL("../../migrations/0003_recipe_scaling.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   class Statement {
     values: unknown[] = [];
     constructor(public sql: string) {}

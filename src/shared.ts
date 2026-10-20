@@ -23,15 +23,23 @@ export const unit = z.enum([
   "tbsp",
   "cup",
 ]);
+export const servingsSchema = z.number().finite().positive().max(100);
+export const ingredientScalingSchema = z.object({
+  mode: z.enum(["linear", "fixed"]).default("linear"),
+  roundUpTo: z.number().finite().min(0.001).max(100000).optional(),
+  note: z.string().trim().max(500).default(""),
+});
 export const ingredientSchema = z.object({
   name: text,
   quantity: z.number().finite().positive().max(100000),
   unit,
+  scaling: ingredientScalingSchema.optional(),
 });
 export const recipeSchema = z.object({
   name: text,
   description: z.string().max(3000).default(""),
-  servings: z.number().positive().max(100).default(2),
+  servings: servingsSchema.default(2),
+  scalingNotes: z.string().trim().max(2000).default(""),
   minutes: z.number().int().min(0).max(2880).default(30),
   ingredients: z.array(ingredientSchema).min(1).max(100),
   instructions: z.array(z.string().trim().min(1).max(3000)).min(1).max(60),
@@ -61,7 +69,7 @@ export const mealSchema = z
     name: text.optional(),
     date,
     slot: z.enum(["breakfast", "lunch", "dinner", "snack"]),
-    servings: z.number().finite().positive().max(100).default(2),
+    servings: servingsSchema.default(2),
     notes: z.string().max(2000).default(""),
     status: z.enum(["planned", "eaten"]).default("planned"),
   })
@@ -93,6 +101,7 @@ export type Meal = Omit<z.infer<typeof mealSchema>, "recipeId"> & {
   name: string;
   ingredients: Ingredient[];
   eatenAt: string | null;
+  scalingNotes: string;
 };
 export type Grocery = z.infer<typeof grocerySchema> & {
   id: string;

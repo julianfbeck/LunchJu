@@ -13,6 +13,7 @@ import {
   grocerySchema,
 } from "../shared";
 import { HttpError, now, type Env, type Access } from "./types";
+import { scaleIngredients, type RecipeSnapshot } from "../scaling";
 
 type Row = Record<string, unknown>;
 const json = <T>(value: unknown): T => JSON.parse(String(value));
@@ -34,6 +35,7 @@ export function recipe(row: Row): Recipe {
     name: String(row.name),
     description: String(row.description),
     servings: Number(row.servings),
+    scalingNotes: String(row.scaling_notes ?? ""),
     minutes: Number(row.minutes),
     ingredients: json(row.ingredients),
     instructions: json(row.instructions),
@@ -67,6 +69,9 @@ export function meal(row: Row): Meal {
     status: row.status as Meal["status"],
     notes: String(row.notes),
     eatenAt: row.eaten_at ? String(row.eaten_at) : null,
+    scalingNotes: row.recipe_snapshot
+      ? json<RecipeSnapshot>(row.recipe_snapshot).scalingNotes
+      : "",
   };
 }
 export function grocery(row: Row): Grocery {
@@ -163,7 +168,7 @@ export async function saveRecipe(
 ) {
   const time = now();
   await env.DB.prepare(
-    `INSERT INTO recipes(id,name,description,servings,minutes,ingredients,instructions,tags,source_url,favorite,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,servings=excluded.servings,minutes=excluded.minutes,ingredients=excluded.ingredients,instructions=excluded.instructions,tags=excluded.tags,source_url=excluded.source_url,favorite=excluded.favorite,updated_at=excluded.updated_at`,
+    `INSERT INTO recipes(id,name,description,servings,minutes,ingredients,instructions,tags,source_url,favorite,created_at,updated_at,scaling_notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,servings=excluded.servings,minutes=excluded.minutes,ingredients=excluded.ingredients,instructions=excluded.instructions,tags=excluded.tags,source_url=excluded.source_url,favorite=excluded.favorite,updated_at=excluded.updated_at,scaling_notes=excluded.scaling_notes`,
   )
     .bind(
       id,
@@ -178,6 +183,7 @@ export async function saveRecipe(
       +data.favorite,
       time,
       time,
+      data.scalingNotes,
     )
     .run();
   return loadRecipe(env, id);
@@ -213,19 +219,25 @@ export async function saveMeal(
   const previous = await env.DB.prepare("SELECT * FROM meals WHERE id=?")
     .bind(id)
     .first<Row>();
-  const snapshot = previous && !previous.recipe_id ? meal(previous) : null;
-  const ingredients = selected
-    ? selected.ingredients.map((item) => ({
-        ...item,
-        quantity: (item.quantity * data.servings) / selected.servings,
-      }))
-    : (snapshot?.ingredients.map((item) => ({
-        ...item,
-        quantity: (item.quantity * data.servings) / snapshot.servings,
-      })) ?? []);
+  const snapshot: RecipeSnapshot | null = selected
+    ? {
+        servings: selected.servings,
+        ingredients: selected.ingredients,
+        scalingNotes: selected.scalingNotes,
+      }
+    : previous && !previous.recipe_id
+      ? previous.recipe_snapshot
+        ? json<RecipeSnapshot>(previous.recipe_snapshot)
+        : {
+            servings: Number(previous.servings),
+            ingredients: json(previous.ingredients),
+            scalingNotes: "",
+          }
+      : null;
+  const ingredients = snapshot ? scaleIngredients(snapshot, data.servings) : [];
   const time = now();
   await env.DB.prepare(
-    `INSERT INTO meals(id,recipe_id,name,date,slot,servings,ingredients,status,notes,eaten_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET recipe_id=excluded.recipe_id,name=excluded.name,date=excluded.date,slot=excluded.slot,servings=excluded.servings,ingredients=excluded.ingredients,status=excluded.status,notes=excluded.notes,eaten_at=CASE WHEN excluded.status='eaten' THEN COALESCE(meals.eaten_at,excluded.eaten_at) ELSE NULL END`,
+    `INSERT INTO meals(id,recipe_id,name,date,slot,servings,ingredients,status,notes,eaten_at,created_at,recipe_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET recipe_id=excluded.recipe_id,name=excluded.name,date=excluded.date,slot=excluded.slot,servings=excluded.servings,ingredients=excluded.ingredients,status=excluded.status,notes=excluded.notes,recipe_snapshot=excluded.recipe_snapshot,eaten_at=CASE WHEN excluded.status='eaten' THEN COALESCE(meals.eaten_at,excluded.eaten_at) ELSE NULL END`,
   )
     .bind(
       id,
@@ -239,6 +251,7 @@ export async function saveMeal(
       data.notes,
       data.status === "eaten" ? time : null,
       time,
+      snapshot ? JSON.stringify(snapshot) : null,
     )
     .run();
   return meal(

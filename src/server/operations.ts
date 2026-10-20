@@ -9,7 +9,12 @@ import {
   grocerySchema,
   missingIngredients,
   normalizeName,
+  servingsSchema,
+  ingredientScalingSchema,
+  unit,
+  type Ingredient,
 } from "../shared";
+import { scaleIngredients, RecipeScalingError } from "../scaling";
 import {
   catalog,
   rows,
@@ -95,10 +100,129 @@ export const operations = {
   update_recipe: operation(
     "Aktualisiert ein Rezept. Gespeicherte Zutatenstände bereits geplanter oder gegessener Mahlzeiten bleiben erhalten.",
     "mcp:write",
-    recipeSchema.extend({ id }),
+    recipeSchema.extend({
+      id,
+      scalingNotes: recipeSchema.shape.scalingNotes.unwrap().optional(),
+    }),
     async ({ id, ...input }, c) => {
-      await loadRecipe(c.env, id);
-      return saveRecipe(c.env, input, id);
+      const previous = await loadRecipe(c.env, id);
+      return saveRecipe(
+        c.env,
+        {
+          ...input,
+          scalingNotes: input.scalingNotes ?? previous.scalingNotes,
+          ingredients: input.ingredients.map((item) => {
+            if (item.scaling) return item;
+            const matching = previous.ingredients.filter(
+              (old) =>
+                normalizeName(old.name) === normalizeName(item.name) &&
+                old.unit === item.unit,
+            );
+            return matching.length === 1 && matching[0].scaling
+              ? { ...item, scaling: matching[0].scaling }
+              : item;
+          }),
+        },
+        id,
+      );
+    },
+  ),
+  set_recipe_scaling: operation(
+    "Ersetzt alle besonderen Skalierungsregeln eines Rezepts. ingredientIndex ist nullbasiert; ingredientName und ingredientUnit müssen zur aktuellen Zutat passen. mode=linear skaliert nach Personen, fixed behält die Grundmenge bei. roundUpTo rundet in der Einheit der Zutat auf, z. B. 1 für ganze Eier. note und notes enthalten deutsche Kochhinweise; sie verändern keine Mengen automatisch. rules=[] setzt alle Zutaten auf normale Skalierung zurück. Bestehende Mahlzeiten behalten ihren Zutatenstand.",
+    "mcp:write",
+    z
+      .object({
+        recipeId: id,
+        notes: z.string().trim().max(2000).default(""),
+        rules: z
+          .array(
+            ingredientScalingSchema.extend({
+              ingredientIndex: z.number().int().min(0).max(99),
+              ingredientName: text,
+              ingredientUnit: unit,
+            }),
+          )
+          .max(100),
+      })
+      .refine(
+        (value) =>
+          new Set(value.rules.map((rule) => rule.ingredientIndex)).size ===
+          value.rules.length,
+        "Jede Zutat darf nur eine Skalierungsregel haben.",
+      ),
+    async (input, c) => {
+      const row = await c.env.DB.prepare(
+        "SELECT ingredients,servings,scaling_notes FROM recipes WHERE id=?",
+      )
+        .bind(input.recipeId)
+        .first<{
+          ingredients: string;
+          servings: number;
+          scaling_notes: string;
+        }>();
+      if (!row) throw new HttpError(404, "Rezept nicht gefunden.");
+      const stored: Ingredient[] = JSON.parse(row.ingredients);
+      const ingredients = stored.map(({ scaling: _, ...item }) => item);
+      for (const rule of input.rules) {
+        const item = ingredients[rule.ingredientIndex];
+        if (
+          !item ||
+          normalizeName(item.name) !== normalizeName(rule.ingredientName) ||
+          item.unit !== rule.ingredientUnit
+        )
+          throw new HttpError(
+            409,
+            "Die Zutaten haben sich geändert. Lies das Rezept erneut und prüfe die Zutatennummern.",
+          );
+      }
+      const updated = ingredients.map((item, index) => {
+        const rule = input.rules.find((rule) => rule.ingredientIndex === index);
+        if (!rule) return item;
+        const {
+          ingredientIndex: _,
+          ingredientName: __,
+          ingredientUnit: ___,
+          ...scaling
+        } = rule;
+        return { ...item, scaling };
+      });
+      const saved = await c.env.DB.prepare(
+        "UPDATE recipes SET ingredients=?,scaling_notes=?,updated_at=? WHERE id=? AND ingredients=? AND servings=? AND scaling_notes=? RETURNING id",
+      )
+        .bind(
+          JSON.stringify(updated),
+          input.notes,
+          now(),
+          input.recipeId,
+          row.ingredients,
+          row.servings,
+          row.scaling_notes,
+        )
+        .first();
+      if (!saved)
+        throw new HttpError(
+          409,
+          "Das Rezept wurde zwischenzeitlich geändert. Lies es erneut und versuche es noch einmal.",
+        );
+      return loadRecipe(c.env, input.recipeId);
+    },
+  ),
+  scale_recipe: operation(
+    "Berechnet Zutaten für die gewünschte Personenzahl einschließlich gespeicherter Festmengen und Aufrundungen. Gibt deutsche Skalierungshinweise und die ursprünglichen Zubereitungsschritte zurück. Ändert das Grundrezept nicht; Kochzeiten werden nicht automatisch skaliert.",
+    "mcp:read",
+    z.object({ recipeId: id, servings: servingsSchema }),
+    async (input, c) => {
+      const recipe = await loadRecipe(c.env, input.recipeId);
+      return {
+        recipeId: recipe.id,
+        name: recipe.name,
+        baseServings: recipe.servings,
+        servings: input.servings,
+        ingredients: scaleIngredients(recipe, input.servings),
+        notes: recipe.scalingNotes,
+        instructions: recipe.instructions,
+        minutes: recipe.minutes,
+      };
     },
   ),
   delete_recipe: operation(
@@ -138,9 +262,9 @@ export const operations = {
     async (input, c) => deleteRecipeImage(c.env, input.recipeId),
   ),
   check_ingredients: operation(
-    "Prüft Zutaten für die gewünschte Portionszahl ohne abgelaufene Vorräte. Kompatible Einheiten werden umgerechnet; Zutatennamen müssen übereinstimmen.",
+    "Prüft Zutaten für die gewünschte Personenzahl einschließlich besonderer Skalierungsregeln ohne abgelaufene Vorräte. Kompatible Einheiten werden umgerechnet; Zutatennamen müssen übereinstimmen.",
     "mcp:read",
-    z.object({ recipeId: id, servings: z.number().positive().max(100) }),
+    z.object({ recipeId: id, servings: servingsSchema }),
     async (input, c) => {
       const recipe = await loadRecipe(c.env, input.recipeId),
         data = await catalog(c.env, c.access);
@@ -151,11 +275,10 @@ export const operations = {
         day: "2-digit",
       }).format(new Date());
       const missing = missingIngredients(
-        recipe.ingredients,
+        scaleIngredients(recipe, input.servings),
         data.pantry.filter(
           (item) => !item.expiresOn || item.expiresOn >= today,
         ),
-        input.servings / recipe.servings,
       );
       return {
         canCook: missing.length === 0,
@@ -427,8 +550,15 @@ export async function runOperation(
 ) {
   if (!Object.hasOwn(operations, name))
     throw new HttpError(404, "Unbekannte Aktion.");
-  const op = operations[name as OperationName],
+  const op = operations[name as OperationName];
+  let result: unknown;
+  try {
     result = await op.run(input, { env, access });
+  } catch (error) {
+    if (error instanceof RecipeScalingError)
+      throw new HttpError(400, error.message);
+    throw error;
+  }
   if (op.scope !== "mcp:read")
     await audit(env, access, name).catch(() =>
       console.error("Protokollierung fehlgeschlagen."),

@@ -20,7 +20,6 @@ import {
   Users,
   KeyRound,
   Bot,
-  Heart,
   Trash2,
   Pencil,
   RefreshCw,
@@ -31,6 +30,8 @@ import {
   Utensils,
   ImagePlus,
 } from "lucide-react";
+import { scaleIngredients } from "../scaling";
+import { RecipeList, ServingsControl, personCount } from "./recipe-list";
 import type {
   Catalog,
   Recipe,
@@ -64,6 +65,7 @@ type Editor = {
   type: "recipe" | "pantry" | "meal" | "grocery";
   value?: Recipe | PantryItem | Meal | Grocery;
   recipe?: Recipe;
+  servings?: number;
 };
 const tabs = [
   { id: "today", name: "Wochenplan", icon: CalendarDays },
@@ -390,6 +392,7 @@ function KitchenContent({
     });
   const [editor, setEditor] = useState<Editor | null>(null),
     [detail, setDetail] = useState<Recipe | null>(null),
+    [detailServings, setDetailServings] = useState(2),
     [search, setSearch] = useState(""),
     [day, setDay] = useState(today()),
     [location, setLocation] = useState("All"),
@@ -642,6 +645,9 @@ function KitchenContent({
                       {formatNumber(meal.servings)} Portionen
                       {meal.notes && <> · {meal.notes}</>}
                     </p>
+                    {meal.scalingNotes && (
+                      <p className="meal-scaling-note">{meal.scalingNotes}</p>
+                    )}
                   </div>
                   <div className="meal-actions">
                     {meal.status === "planned" ? (
@@ -731,92 +737,28 @@ function KitchenContent({
             </label>
             <span className="muted">{data.recipes.length} Rezepte</span>
           </div>
-          <div className="recipe-list">
-            {data.recipes
-              .filter((recipe) =>
-                `${recipe.name} ${recipe.tags.join(" ")} ${recipe.ingredients.map((i) => i.name).join(" ")}`
-                  .toLowerCase()
-                  .includes(search.toLowerCase()),
-              )
-              .map((recipe, index) => (
-                <article className="recipe-row" key={recipe.id}>
-                  {recipe.imageUrl ? (
-                    <button
-                      className="recipe-thumbnail"
-                      onClick={() => setDetail(recipe)}
-                      aria-label={`Rezept öffnen: ${recipe.name}`}
-                    >
-                      <img
-                        src={recipe.imageUrl}
-                        alt={recipe.imageAlt || recipe.name}
-                        width={56}
-                        height={64}
-                        loading="lazy"
-                      />
-                    </button>
-                  ) : (
-                    <span className="recipe-number" aria-hidden="true">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                  )}
-                  <button
-                    className={`favorite ${recipe.favorite ? "is-favorite" : ""}`}
-                    aria-label={
-                      recipe.favorite
-                        ? "Favorit entfernen"
-                        : "Als Favorit markieren"
-                    }
-                    aria-pressed={recipe.favorite}
-                    onClick={() =>
-                      perform("update_recipe", {
-                        ...recipe,
-                        favorite: !recipe.favorite,
-                      })
-                    }
-                  >
-                    <Heart
-                      size={18}
-                      fill={recipe.favorite ? "currentColor" : "none"}
-                    />
-                  </button>
-                  <div className="recipe-summary">
-                    <div className="tag-row">
-                      {recipe.tags.slice(0, 2).map((tag) => (
-                        <span className="pill" key={tag}>
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                    <button
-                      className="recipe-title"
-                      onClick={() => setDetail(recipe)}
-                    >
-                      {recipe.name}
-                    </button>
-                    <p>{recipe.description}</p>
-                    <div className="recipe-meta">
-                      <span>
-                        <Clock size={14} />
-                        {formatNumber(recipe.minutes)} Min.
-                      </span>
-                      <span>
-                        <Users size={14} />
-                        {formatNumber(recipe.servings)} Portionen
-                      </span>
-                      <button
-                        className="icon-button"
-                        aria-label={`Bearbeiten: ${recipe.name}`}
-                        onClick={() =>
-                          setEditor({ type: "recipe", value: recipe })
-                        }
-                      >
-                        <Pencil size={15} />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-          </div>
+          <RecipeList
+            recipes={data.recipes.filter((recipe) =>
+              `${recipe.name} ${recipe.tags.join(" ")} ${recipe.ingredients.map((i) => i.name).join(" ")}`
+                .toLocaleLowerCase("de")
+                .includes(search.toLocaleLowerCase("de")),
+            )}
+            busy={mutation.isPending}
+            onOpen={(recipe, servings) => {
+              setDetailServings(servings);
+              setDetail(recipe);
+            }}
+            onPlan={(recipe, servings) =>
+              setEditor({ type: "meal", recipe, servings })
+            }
+            onEdit={(recipe) => setEditor({ type: "recipe", value: recipe })}
+            onFavorite={(recipe) =>
+              perform("update_recipe", {
+                ...recipe,
+                favorite: !recipe.favorite,
+              })
+            }
+          />
           {!data.recipes.length && (
             <Empty
               icon={<BookOpen size={30} />}
@@ -1059,7 +1001,9 @@ function KitchenContent({
       )}
       {detail && (
         <RecipeDetail
+          key={detail.id}
           recipe={detail}
+          initialServings={detailServings}
           onImageSaved={(recipe) => {
             setDetail((current) =>
               current?.id === recipe.id ? recipe : current,
@@ -1068,8 +1012,8 @@ function KitchenContent({
             notify("Rezeptbild gespeichert.");
           }}
           onClose={() => setDetail(null)}
-          onPlan={() => {
-            setEditor({ type: "meal", recipe: detail });
+          onPlan={(servings) => {
+            setEditor({ type: "meal", recipe: detail, servings });
             setDetail(null);
           }}
           onEdit={() => {
@@ -1233,10 +1177,12 @@ function EditorForm({
           .split("\n")
           .map((value) => value.trim())
           .filter(Boolean),
-        ingredients: ingredients.map((_, index) => ({
+        scalingNotes: str("scalingNotes"),
+        ingredients: ingredients.map((item, index) => ({
           name: str(`ingredient-${index}`),
           quantity: number(`quantity-${index}`),
           unit: str(`unit-${index}`),
+          scaling: item.scaling,
         })),
       };
       operation = value?.id ? "update_recipe" : "create_recipe";
@@ -1341,80 +1287,181 @@ function EditorForm({
             <small>Für die angegebene Portionszahl</small>
           </div>
           {ingredients.map((ingredient, index) => (
-            <div className="ingredient-input" key={index}>
-              <label className="sr-only" htmlFor={`ing-${index}`}>
-                Ingredient {index + 1}
-              </label>
-              <input
-                id={`ing-${index}`}
-                name={`ingredient-${index}`}
-                value={ingredient.name}
-                onChange={(event) =>
-                  setIngredients((items) =>
-                    items.map((item, i) =>
-                      i === index
-                        ? { ...item, name: event.target.value }
-                        : item,
-                    ),
-                  )
-                }
-                placeholder="Zutat"
-                required
-                maxLength={160}
-              />
-              <input
-                name={`quantity-${index}`}
-                aria-label={`Menge für Zutat ${index + 1}`}
-                type="number"
-                value={ingredient.quantity}
-                onChange={(event) =>
-                  setIngredients((items) =>
-                    items.map((item, i) =>
-                      i === index
-                        ? { ...item, quantity: Number(event.target.value) }
-                        : item,
-                    ),
-                  )
-                }
-                min="0.001"
-                max="100000"
-                step="any"
-                required
-              />
-              <select
-                name={`unit-${index}`}
-                aria-label={`Einheit für Zutat ${index + 1}`}
-                value={ingredient.unit}
-                onChange={(event) =>
-                  setIngredients((items) =>
-                    items.map((item, i) =>
-                      i === index
-                        ? {
-                            ...item,
-                            unit: event.target.value as Ingredient["unit"],
-                          }
-                        : item,
-                    ),
-                  )
-                }
-              >
-                {units.map((unit) => (
-                  <option key={unit} value={unit}>
-                    {unitLabels[unit as keyof typeof unitLabels]}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="icon-button"
-                disabled={ingredients.length <= 1}
-                aria-label={`Zutat ${index + 1} entfernen`}
-                onClick={() =>
-                  setIngredients((items) => items.filter((_, i) => i !== index))
-                }
-              >
-                <X size={15} />
-              </button>
+            <div className="ingredient-editor" key={index}>
+              <div className="ingredient-input">
+                <label className="sr-only" htmlFor={`ing-${index}`}>
+                  Zutat {index + 1}
+                </label>
+                <input
+                  id={`ing-${index}`}
+                  name={`ingredient-${index}`}
+                  value={ingredient.name}
+                  onChange={(event) =>
+                    setIngredients((items) =>
+                      items.map((item, i) =>
+                        i === index
+                          ? { ...item, name: event.target.value }
+                          : item,
+                      ),
+                    )
+                  }
+                  placeholder="Zutat"
+                  required
+                  maxLength={160}
+                />
+                <input
+                  name={`quantity-${index}`}
+                  aria-label={`Menge für Zutat ${index + 1}`}
+                  type="number"
+                  value={ingredient.quantity}
+                  onChange={(event) =>
+                    setIngredients((items) =>
+                      items.map((item, i) =>
+                        i === index
+                          ? { ...item, quantity: Number(event.target.value) }
+                          : item,
+                      ),
+                    )
+                  }
+                  min="0.001"
+                  max="100000"
+                  step="any"
+                  required
+                />
+                <select
+                  name={`unit-${index}`}
+                  aria-label={`Einheit für Zutat ${index + 1}`}
+                  value={ingredient.unit}
+                  onChange={(event) =>
+                    setIngredients((items) =>
+                      items.map((item, i) =>
+                        i === index
+                          ? {
+                              ...item,
+                              unit: event.target.value as Ingredient["unit"],
+                            }
+                          : item,
+                      ),
+                    )
+                  }
+                >
+                  {units.map((unit) => (
+                    <option key={unit} value={unit}>
+                      {unitLabels[unit as keyof typeof unitLabels]}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="icon-button"
+                  disabled={ingredients.length <= 1}
+                  aria-label={`Zutat ${index + 1} entfernen`}
+                  onClick={() =>
+                    setIngredients((items) =>
+                      items.filter((_, i) => i !== index),
+                    )
+                  }
+                >
+                  <X size={15} />
+                </button>
+              </div>
+              <details className="ingredient-scaling-editor">
+                <summary>
+                  Skalierung
+                  {ingredient.scaling?.mode === "fixed" ||
+                  ingredient.scaling?.roundUpTo ||
+                  ingredient.scaling?.note
+                    ? " · Sonderregel"
+                    : " anpassen"}
+                </summary>
+                <div className="form-row">
+                  <Field label="Menge bei anderer Personenzahl">
+                    <select
+                      aria-label={`Skalierung für Zutat ${index + 1}`}
+                      value={ingredient.scaling?.mode ?? "linear"}
+                      onChange={(event) =>
+                        setIngredients((items) =>
+                          items.map((item, i) =>
+                            i === index
+                              ? {
+                                  ...item,
+                                  scaling: {
+                                    note: "",
+                                    ...item.scaling,
+                                    mode: event.target.value as
+                                      "linear" | "fixed",
+                                  },
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="linear">
+                        Mit der Personenzahl anpassen
+                      </option>
+                      <option value="fixed">Menge gleich lassen</option>
+                    </select>
+                  </Field>
+                  <Field
+                    label={`Aufrunden auf (${unitLabels[ingredient.unit]}, optional)`}
+                  >
+                    <input
+                      type="number"
+                      min="0.001"
+                      max="100000"
+                      step="any"
+                      value={ingredient.scaling?.roundUpTo ?? ""}
+                      aria-label={`Aufrunden für Zutat ${index + 1}`}
+                      onChange={(event) =>
+                        setIngredients((items) =>
+                          items.map((item, i) =>
+                            i === index
+                              ? {
+                                  ...item,
+                                  scaling: {
+                                    mode: "linear",
+                                    note: "",
+                                    ...item.scaling,
+                                    roundUpTo:
+                                      event.target.value === ""
+                                        ? undefined
+                                        : Number(event.target.value),
+                                  },
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                      placeholder="z. B. 1 für ganze Eier"
+                    />
+                  </Field>
+                </div>
+                <Field label="Hinweis zur Zutat (optional)">
+                  <input
+                    maxLength={500}
+                    value={ingredient.scaling?.note ?? ""}
+                    aria-label={`Skalierungshinweis für Zutat ${index + 1}`}
+                    onChange={(event) =>
+                      setIngredients((items) =>
+                        items.map((item, i) =>
+                          i === index
+                            ? {
+                                ...item,
+                                scaling: {
+                                  mode: "linear",
+                                  ...item.scaling,
+                                  note: event.target.value,
+                                },
+                              }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder="z. B. Gewürze zum Schluss abschmecken"
+                  />
+                </Field>
+              </details>
             </div>
           ))}
           <button
@@ -1439,6 +1486,15 @@ function EditorForm({
               placeholder={
                 "Gemüse schneiden.\nEtwas Olivenöl in einer Pfanne erhitzen.\nZutaten anbraten und abschmecken."
               }
+            />
+          </Field>
+          <Field label="Hinweise für andere Personenzahlen (optional)">
+            <textarea
+              name="scalingNotes"
+              rows={2}
+              maxLength={2000}
+              defaultValue={(value as Recipe)?.scalingNotes}
+              placeholder="z. B. Ab 6 Personen in zwei Pfannen braten. Garzeit bleibt gleich."
             />
           </Field>
           <Field label="Schlagwörter, durch Kommas getrennt">
@@ -1567,7 +1623,10 @@ function EditorForm({
                 step="any"
                 required
                 defaultValue={
-                  (value as Meal)?.servings ?? editor.recipe?.servings ?? 2
+                  (value as Meal)?.servings ??
+                  editor.servings ??
+                  editor.recipe?.servings ??
+                  2
                 }
               />
             </Field>
@@ -1619,20 +1678,26 @@ function EditorForm({
 }
 function RecipeDetail({
   recipe,
+  initialServings,
   onImageSaved,
   onClose,
   onPlan,
   onEdit,
 }: {
   recipe: Recipe;
+  initialServings: number;
   onImageSaved: (recipe: Recipe) => void;
   onClose: () => void;
-  onPlan: () => void;
+  onPlan: (servings: number) => void;
   onEdit: () => void;
 }) {
-  const [servings, setServings] = useState(recipe.servings);
+  const [people, setPeople] = useState(String(initialServings));
+  const servings = personCount(people);
+  const ingredients =
+    servings === null ? [] : scaleIngredients(recipe, servings);
   const check = useQuery({
-    queryKey: ["readiness", recipe.id, servings],
+    queryKey: ["readiness", recipe.id, recipe.updatedAt, servings],
+    enabled: servings !== null,
     queryFn: () =>
       action<{ canCook: boolean; missing: Ingredient[] }>("check_ingredients", {
         recipeId: recipe.id,
@@ -1649,43 +1714,56 @@ function RecipeDetail({
             <Clock size={16} />
             {formatNumber(recipe.minutes)} Minuten
           </span>
-          <label>
-            Portionen{" "}
-            <input
-              type="number"
-              min="0.1"
-              max="100"
-              step="any"
-              value={servings}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                if (value > 0 && value <= 100) setServings(value);
-              }}
-            />
-          </label>
+          <ServingsControl
+            value={people}
+            onChange={setPeople}
+            baseServings={recipe.servings}
+          />
         </div>
         <div className={check.data?.canCook ? "readiness ready" : "readiness"}>
           <PackageOpen size={19} />
-          {check.isPending
-            ? "Vorräte werden geprüft…"
-            : check.error
-              ? "Vorräte konnten nicht geprüft werden."
-              : check.data?.canCook
-                ? "Alle Zutaten sind vorhanden."
-                : `${check.data?.missing.length} Zutaten fehlen.`}
+          {servings === null
+            ? "Wähle eine Personenzahl zwischen 0,1 und 100."
+            : check.isPending
+              ? "Vorräte werden geprüft…"
+              : check.error
+                ? "Vorräte konnten nicht geprüft werden."
+                : check.data?.canCook
+                  ? "Alle Zutaten sind vorhanden."
+                  : `${check.data?.missing.length} Zutaten fehlen.`}
         </div>
+        {recipe.scalingNotes && (
+          <aside className="scaling-notes">
+            <strong>Hinweise zur Personenzahl</strong>
+            <p>{recipe.scalingNotes}</p>
+          </aside>
+        )}
         <h3>Zutaten</h3>
         <ul className="ingredients-list">
-          {recipe.ingredients.map((item, index) => (
+          {ingredients.map((item, index) => (
             <li key={index}>
-              <span>{item.name}</span>
+              <span>
+                {item.name}
+                {(item.scaling?.mode === "fixed" ||
+                  item.scaling?.roundUpTo ||
+                  item.scaling?.note) && (
+                  <small className="ingredient-scaling-note">
+                    {[
+                      item.scaling.mode === "fixed"
+                        ? "Menge bleibt gleich"
+                        : "",
+                      item.scaling.roundUpTo
+                        ? `Auf ${formatNumber(item.scaling.roundUpTo)} ${unitLabels[item.unit]} aufgerundet`
+                        : "",
+                      item.scaling.note,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </small>
+                )}
+              </span>
               <strong>
-                {formatNumber(
-                  Math.round(
-                    ((item.quantity * servings) / recipe.servings) * 100,
-                  ) / 100,
-                )}{" "}
-                {unitLabels[item.unit]}
+                {formatNumber(item.quantity)} {unitLabels[item.unit]}
               </strong>
             </li>
           ))}
@@ -1710,7 +1788,11 @@ function RecipeDetail({
           <button className="secondary" onClick={onEdit}>
             <Pencil size={16} /> Rezept bearbeiten
           </button>
-          <button className="primary" onClick={onPlan}>
+          <button
+            className="primary"
+            disabled={servings === null}
+            onClick={() => onPlan(servings!)}
+          >
             <CalendarDays size={16} /> Mahlzeit planen
           </button>
         </div>
