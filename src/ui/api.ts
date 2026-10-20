@@ -1,9 +1,25 @@
-export class ApiError extends Error {}
+import {
+  browserLanguage,
+  translate,
+  languageLocale,
+  type Language,
+} from "../i18n";
+export class ApiError extends Error {
+  constructor(message: string) {
+    super(translate(browserLanguage(), message));
+  }
+}
 export function passkeyError(error: unknown) {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error && error.name === "InvalidStateError")
-    return "Dieser Passkey ist bereits registriert. Wähle einen anderen Passkey.";
-  return "Die Passkey-Anmeldung wurde abgebrochen oder ist fehlgeschlagen. Bitte versuche es erneut.";
+    return translate(
+      browserLanguage(),
+      "Dieser Passkey ist bereits registriert. Wähle einen anderen Passkey.",
+    );
+  return translate(
+    browserLanguage(),
+    "Die Passkey-Anmeldung wurde abgebrochen oder ist fehlgeschlagen. Bitte versuche es erneut.",
+  );
 }
 export async function request<T>(url: string, body?: unknown): Promise<T> {
   let response: Response;
@@ -22,7 +38,12 @@ export async function request<T>(url: string, body?: unknown): Promise<T> {
   const data = (await response.json()) as T & { error?: string };
   if (!response.ok)
     throw new ApiError(
-      data.error ?? `Anfrage fehlgeschlagen (${response.status}).`,
+      data.error ??
+        translate(
+          browserLanguage(),
+          "Anfrage fehlgeschlagen ({0}).",
+          response.status,
+        ),
     );
   return data;
 }
@@ -44,8 +65,9 @@ export function addDays(date: string, days: number) {
 export function formatDate(
   date: string,
   options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" },
+  language: Language = "de",
 ) {
-  return new Intl.DateTimeFormat("de-DE", {
+  return new Intl.DateTimeFormat(languageLocale(language), {
     ...options,
     timeZone: "UTC",
   }).format(new Date(`${date}T12:00:00Z`));

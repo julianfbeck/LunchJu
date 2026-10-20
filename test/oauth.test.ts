@@ -7,6 +7,7 @@ import { hash, randomToken } from "../src/server/security";
 async function oauthFixture(
   scopes = ["mcp:read", "mcp:write"],
   persistent = true,
+  language: "de" | "en" = "de",
 ) {
   const f = fixture(),
     state = durableState(),
@@ -43,14 +44,23 @@ async function oauthFixture(
       resource: origin + "/mcp",
     });
   const authorization = await call("/oauth/authorize?" + params, {
-    headers: { Cookie: `lunchju_session=${token}` },
+    headers: {
+      Cookie: `lunchju_session=${token}; lunchju_language=${language}`,
+    },
   });
   expect(authorization.status).toBe(200);
   const html = await authorization.text(),
     handle = html.match(/name="handle" value="([^"]+)"/)?.[1];
   expect(handle).toBeTruthy();
+  expect(html).toContain(`<html lang="${language}">`);
+  expect(html).toContain(
+    language === "en"
+      ? "Read recipes, pantry, meals and shopping list"
+      : "Rezepte, Vorräte, Mahlzeiten und Einkaufsliste lesen",
+  );
   const cookies = [
     `lunchju_session=${token}`,
+    `lunchju_language=${language}`,
     ...authorization.headers.getSetCookie().map((value) => value.split(";")[0]),
   ].join("; ");
   const form = new URLSearchParams({
@@ -70,7 +80,9 @@ async function oauthFixture(
   });
   expect(consent.status).toBe(200);
   const returnHtml = await consent.text();
-  expect(returnHtml).toContain("Verbindung hergestellt.");
+  expect(returnHtml).toContain(
+    language === "en" ? "Connected." : "Verbindung hergestellt.",
+  );
   const callback = new URL(
     returnHtml.match(/content="0;url=([^"]+)"/)![1].replaceAll("&#38;", "&"),
   );
@@ -92,9 +104,20 @@ async function oauthFixture(
     access_token: string;
     refresh_token: string;
   };
-  return { ...f, call, tokens, client, exchange, state };
+  return { ...f, call, tokens, client, exchange, state, cookies };
 }
 describe("Agent OAuth coordinator", () => {
+  it("keeps English across consent, callback and grant management without changing scopes", async () => {
+    const f = await oauthFixture(["mcp:read"], true, "en");
+    const grants = await f.call("/oauth/grants", {
+      headers: { Cookie: f.cookies },
+    });
+    const html = await grants.text();
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain("Connected agents");
+    expect(html).toContain("Revoke access");
+    expect(html).toContain("mcp:read");
+  });
   it("does not issue continuing access unless explicitly approved", async () => {
     const f = await oauthFixture(["mcp:read"], false);
     expect(f.tokens.access_token).toBeTruthy();

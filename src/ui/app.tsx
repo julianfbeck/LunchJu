@@ -1,3 +1,4 @@
+import { useI18n, LanguageSelector } from "./language";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -56,9 +57,12 @@ import {
   mealSlotLabels,
   formatNumber,
 } from "../locale";
-
 type Data = Catalog & {
-  preferences: { diet: string; allergies: string[]; notes: string };
+  preferences: {
+    diet: string;
+    allergies: string[];
+    notes: string;
+  };
 };
 type Tab = "today" | "recipes" | "pantry" | "groceries" | "settings";
 type Editor = {
@@ -68,22 +72,44 @@ type Editor = {
   servings?: number;
 };
 const tabs = [
-  { id: "today", name: "Wochenplan", icon: CalendarDays },
-  { id: "recipes", name: "Rezepte", icon: BookOpen },
-  { id: "pantry", name: "Vorräte", icon: PackageOpen },
-  { id: "groceries", name: "Einkaufsliste", icon: ShoppingBasket },
-  { id: "settings", name: "Einstellungen", icon: Settings2 },
+  {
+    id: "today",
+    name: "Wochenplan",
+    icon: CalendarDays,
+  },
+  {
+    id: "recipes",
+    name: "Rezepte",
+    icon: BookOpen,
+  },
+  {
+    id: "pantry",
+    name: "Vorräte",
+    icon: PackageOpen,
+  },
+  {
+    id: "groceries",
+    name: "Einkaufsliste",
+    icon: ShoppingBasket,
+  },
+  {
+    id: "settings",
+    name: "Einstellungen",
+    icon: Settings2,
+  },
 ] as const;
 const units = ["g", "kg", "ml", "l", "piece", "tsp", "tbsp", "cup"];
-
 export function KitchenApp() {
+  const { t } = useI18n();
   const client = useQueryClient();
   const session = useQuery({
     queryKey: ["session"],
     queryFn: () =>
-      request<{ user: User | null; setup: boolean; homeName: string }>(
-        "/api/auth/session",
-      ),
+      request<{
+        user: User | null;
+        setup: boolean;
+        homeName: string;
+      }>("/api/auth/session"),
   });
   const [tab, setTab] = useState<Tab>("today"),
     [notice, setNotice] = useState("");
@@ -97,17 +123,21 @@ export function KitchenApp() {
     return (
       <div className="loading-screen">
         <Brand />
-        <p>Wird geladen…</p>
+        <LanguageSelector />
+        <p>{t("Wird geladen…")}</p>
       </div>
     );
   if (session.error)
     return (
       <div className="auth-page">
         <Brand />
-        <h1>LunchJu konnte nicht geladen werden</h1>
+        <LanguageSelector />
+        <h1>{t("LunchJu konnte nicht geladen werden")}</h1>
         <p className="error">{session.error.message}</p>
-        <p>Bitte versuche es gleich noch einmal.</p>
-        <button onClick={() => session.refetch()}>Erneut versuchen</button>
+        <p>{t("Bitte versuche es gleich noch einmal.")}</p>
+        <button onClick={() => session.refetch()}>
+          {t("Erneut versuchen")}
+        </button>
       </div>
     );
   if (!session.data.user)
@@ -116,7 +146,9 @@ export function KitchenApp() {
         setup={session.data.setup}
         homeName={session.data.homeName}
         onLogin={async () => {
-          await client.invalidateQueries({ queryKey: ["session"] });
+          await client.invalidateQueries({
+            queryKey: ["session"],
+          });
           const next = new URLSearchParams(location.search).get("next");
           if (next?.startsWith("/oauth/") && !next.startsWith("//"))
             location.assign(next);
@@ -128,7 +160,7 @@ export function KitchenApp() {
       <aside className="sidebar">
         <Brand />
         <div className="home-label">{session.data.homeName}</div>
-        <nav aria-label="Hauptnavigation">
+        <nav aria-label={t("Hauptnavigation")}>
           {tabs.map((item) => (
             <button
               key={item.id}
@@ -137,13 +169,16 @@ export function KitchenApp() {
               onClick={() => setTab(item.id)}
             >
               <item.icon size={20} />
-              {item.name}
+              {t(item.name)}
             </button>
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <LanguageSelector />
           <button className="agent-link" onClick={() => setTab("settings")}>
-            <Bot size={18} /> Agentenzugang <ArrowUpRight size={15} />
+            <Bot size={18} />
+            {t(" Agentenzugang ")}
+            <ArrowUpRight size={15} />
           </button>
           <button className="profile" onClick={() => setTab("settings")}>
             <span className="avatar">
@@ -153,8 +188,8 @@ export function KitchenApp() {
               <strong>{session.data.user.name}</strong>
               <small>
                 {session.data.user.role === "owner"
-                  ? "Haushaltsinhaber"
-                  : "Haushaltsmitglied"}
+                  ? t("Haushaltsinhaber")
+                  : t("Haushaltsmitglied")}
               </small>
             </span>
             <Settings2 size={17} />
@@ -164,9 +199,10 @@ export function KitchenApp() {
       <main className="main-content">
         <header className="mobile-header">
           <Brand />
+          <LanguageSelector />
           <button
             className="avatar"
-            aria-label="Deine Einstellungen"
+            aria-label={t("Deine Einstellungen")}
             onClick={() => setTab("settings")}
           >
             {session.data.user.name.slice(0, 1).toUpperCase()}
@@ -174,7 +210,7 @@ export function KitchenApp() {
         </header>
         <KitchenContent tab={tab} setTab={setTab} notify={setNotice} />
       </main>
-      <nav className="bottom-nav" aria-label="Mobile Navigation">
+      <nav className="bottom-nav" aria-label={t("Mobile Navigation")}>
         {tabs.map((item) => (
           <button
             key={item.id}
@@ -183,7 +219,7 @@ export function KitchenApp() {
             onClick={() => setTab(item.id)}
           >
             <item.icon size={22} />
-            <span>{item.id === "today" ? "Plan" : item.name}</span>
+            <span>{item.id === "today" ? t("Plan") : t(item.name)}</span>
           </button>
         ))}
       </nav>
@@ -197,8 +233,9 @@ export function KitchenApp() {
   );
 }
 function Brand() {
+  const { t } = useI18n();
   return (
-    <a className="brand" href="/" aria-label="LunchJu Startseite">
+    <a className="brand" href="/" aria-label={t("LunchJu Startseite")}>
       <span className="brand-icon" aria-hidden="true">
         lj
       </span>
@@ -215,6 +252,7 @@ function AuthScreen({
   homeName: string;
   onLogin: () => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [invite, setInvite] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -232,7 +270,9 @@ function AuthScreen({
       const options = await request<
         Parameters<typeof startAuthentication>[0]["optionsJSON"]
       >("/api/auth/login/options", {});
-      const response = await startAuthentication({ optionsJSON: options });
+      const response = await startAuthentication({
+        optionsJSON: options,
+      });
       await request("/api/auth/login/verify", response);
       await onLogin();
     } catch (error) {
@@ -252,9 +292,11 @@ function AuthScreen({
       >("/api/auth/register/options", {
         name: form.get("name"),
         token: invite || form.get("token"),
-        label: "Mein erster Passkey",
+        label: t("Mein erster Passkey"),
       });
-      const response = await startRegistration({ optionsJSON: options });
+      const response = await startRegistration({
+        optionsJSON: options,
+      });
       await request("/api/auth/register/verify", response);
       await onLogin();
     } catch (error) {
@@ -268,93 +310,100 @@ function AuthScreen({
       <section className="auth-story">
         <Brand />
         <div className="auth-intro">
-          <span className="eyebrow">DEIN GEMEINSAMES KÜCHENBUCH</span>
+          <span className="eyebrow">{t("DEIN GEMEINSAMES KÜCHENBUCH")}</span>
           <h1>
-            Dein Küchenbuch
+            {t("Dein Küchenbuch")}
             <br />
-            für Stuttgart.
+            {t("für Stuttgart.")}
           </h1>
-          <p>Rezepte, Vorräte und dein Plan für die nächsten Mahlzeiten.</p>
+          <p>
+            {t("Rezepte, Vorräte und dein Plan für die nächsten Mahlzeiten.")}
+          </p>
           <ol className="notebook-index">
             <li>
               <span>01</span>
-              <strong>Rezepte</strong>
-              <small>Zum Nachkochen und Aufheben</small>
+              <strong>{t("Rezepte")}</strong>
+              <small>{t("Zum Nachkochen und Aufheben")}</small>
             </li>
             <li>
               <span>02</span>
-              <strong>Wochenplan</strong>
-              <small>Was diese Woche auf den Tisch kommt</small>
+              <strong>{t("Wochenplan")}</strong>
+              <small>{t("Was diese Woche auf den Tisch kommt")}</small>
             </li>
             <li>
               <span>03</span>
-              <strong>Vorräte</strong>
-              <small>Was du schon zu Hause hast</small>
+              <strong>{t("Vorräte")}</strong>
+              <small>{t("Was du schon zu Hause hast")}</small>
             </li>
             <li>
               <span>04</span>
-              <strong>Einkaufsliste</strong>
-              <small>Was noch fehlt</small>
+              <strong>{t("Einkaufsliste")}</strong>
+              <small>{t("Was noch fehlt")}</small>
             </li>
           </ol>
         </div>
-        <small>FÜR DEINEN HAUSHALT IN STUTTGART.</small>
+        <small>{t("FÜR DEINEN HAUSHALT IN STUTTGART.")}</small>
       </section>
       <section className="auth-panel">
+        <LanguageSelector />
         <div className="auth-card">
           <span className="eyebrow">
-            {setup ? "ERSTE EINRICHTUNG" : "DEIN HAUSHALT"}
+            {setup ? t("ERSTE EINRICHTUNG") : t("DEIN HAUSHALT")}
           </span>
           <h2>
             {setup
-              ? "Haushalt einrichten"
+              ? t("Haushalt einrichten")
               : invite
-                ? "Dem Haushalt beitreten"
-                : "Anmelden"}
+                ? t("Dem Haushalt beitreten")
+                : t("Anmelden")}
           </h2>
           <p>
             {setup
-              ? "Erstelle das erste Konto für deinen Haushalt in Stuttgart."
+              ? t("Erstelle das erste Konto für deinen Haushalt in Stuttgart.")
               : invite
-                ? `Du bist zum Haushalt ${homeName} eingeladen.`
-                : `Melde dich mit deinem Passkey für ${homeName} an.`}
+                ? t("Du bist zum Haushalt {0} eingeladen.", homeName)
+                : t("Melde dich mit deinem Passkey für {0} an.", homeName)}
           </p>
           {setup || invite ? (
             <form onSubmit={register}>
-              <Field label="Dein Name">
+              <Field label={t("Dein Name")}>
                 <input
                   name="name"
                   autoComplete="name"
-                  placeholder="Name"
+                  placeholder={t("Name")}
                   required
                   maxLength={80}
                 />
               </Field>
               {setup && (
-                <Field label="Einmaliger Einrichtungscode">
+                <Field label={t("Einmaliger Einrichtungscode")}>
                   <input
                     name="token"
                     type="password"
                     autoComplete="off"
                     required
-                    placeholder="Einrichtungscode"
+                    placeholder={t("Einrichtungscode")}
                   />
                   <small>
-                    Nutze den privaten Code aus der Einrichtung von LunchJu.
+                    {t(
+                      "Nutze den privaten Code aus der Einrichtung von LunchJu.",
+                    )}
                   </small>
                 </Field>
               )}
               <button className="primary full" disabled={busy}>
                 <KeyRound size={18} />
                 {busy
-                  ? "Passkey wird erstellt…"
-                  : "Konto mit Passkey erstellen"}
+                  ? t("Passkey wird erstellt…")
+                  : t("Konto mit Passkey erstellen")}
               </button>
             </form>
           ) : (
             <button className="primary full" disabled={busy} onClick={login}>
               <KeyRound size={18} />
-              {busy ? "Warten auf deinen Passkey…" : "Mit Passkey anmelden"}
+              {busy
+                ? t("Warten auf deinen Passkey…")
+                : t("Mit Passkey anmelden")}
             </button>
           )}
           {error && (
@@ -366,8 +415,12 @@ function AuthScreen({
             <KeyRound size={17} />
             <p>
               {setup || invite
-                ? "Erstelle deinen Passkey mit Fingerabdruck, Gesichtserkennung oder Geräte-PIN."
-                : "Noch kein Zugang? Bitte den Haushaltsinhaber um eine Einladung."}
+                ? t(
+                    "Erstelle deinen Passkey mit Fingerabdruck, Gesichtserkennung oder Geräte-PIN.",
+                  )
+                : t(
+                    "Noch kein Zugang? Bitte den Haushaltsinhaber um eine Einladung.",
+                  )}
             </p>
           </div>
         </div>
@@ -375,7 +428,6 @@ function AuthScreen({
     </div>
   );
 }
-
 function KitchenContent({
   tab,
   setTab,
@@ -385,6 +437,7 @@ function KitchenContent({
   setTab: (tab: Tab) => void;
   notify: (value: string) => void;
 }) {
+  const { t, language } = useI18n();
   const client = useQueryClient(),
     query = useQuery({
       queryKey: ["catalog"],
@@ -408,44 +461,63 @@ function KitchenContent({
     onSuccess: async () => {
       await Promise.all(
         ["catalog", "members", "passkeys", "bringLists"].map((key) =>
-          client.invalidateQueries({ queryKey: [key] }),
+          client.invalidateQueries({
+            queryKey: [key],
+          }),
         ),
       );
     },
     onError: (error) => notify(error.message),
   });
   const run = async (operation: string, input?: unknown, message?: string) => {
-    const result = await mutation.mutateAsync({ operation, input });
+    const result = await mutation.mutateAsync({
+      operation,
+      input,
+    });
     if (message) notify(message);
     return result;
   };
   const perform = (operation: string, input?: unknown, message?: string) => {
     void run(operation, input, message).catch(() => {});
   };
-  function remove(type: Editor["type"], value: { id: string; name: string }) {
+  function remove(
+    type: Editor["type"],
+    value: {
+      id: string;
+      name: string;
+    },
+  ) {
     if (
       window.confirm(
-        `„${value.name}“ entfernen?${type === "recipe" ? " Der bisherige Essensverlauf bleibt erhalten." : ""}`,
+        t(
+          "„{0}“ entfernen?{1}",
+          value.name,
+          type === "recipe"
+            ? t(" Der bisherige Essensverlauf bleibt erhalten.")
+            : "",
+        ),
       )
     )
       perform(
         `delete_${type === "pantry" ? "pantry_item" : type}`,
-        { id: value.id },
-        "Entfernt.",
+        {
+          id: value.id,
+        },
+        t("Entfernt."),
       );
   }
   if (query.isPending)
     return (
       <div className="loading-screen">
-        <p>Dein Haushalt wird geladen…</p>
+        <p>{t("Dein Haushalt wird geladen…")}</p>
       </div>
     );
   if (query.error)
     return (
       <section className="empty-state">
-        <h2>Dein Haushalt konnte nicht geladen werden.</h2>
+        <h2>{t("Dein Haushalt konnte nicht geladen werden.")}</h2>
         <p className="error">{query.error.message}</p>
-        <button onClick={() => query.refetch()}>Erneut versuchen</button>
+        <button onClick={() => query.refetch()}>{t("Erneut versuchen")}</button>
       </section>
     );
   const data = query.data,
@@ -454,7 +526,12 @@ function KitchenContent({
       day,
       -((new Date(`${day}T12:00Z`).getUTCDay() + 6) % 7),
     ),
-    week = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+    week = Array.from(
+      {
+        length: 7,
+      },
+      (_, i) => addDays(monday, i),
+    );
   const expired = data.pantry.filter(
     (item) => item.expiresOn && item.expiresOn <= addDays(baseToday, 3),
   );
@@ -464,34 +541,42 @@ function KitchenContent({
   );
   const title =
     tab === "today"
-      ? "Wochenplan"
+      ? t("Wochenplan")
       : tab === "recipes"
-        ? "Rezepte"
+        ? t("Rezepte")
         : tab === "pantry"
-          ? "Pantry"
+          ? t("Vorräte")
           : tab === "groceries"
-            ? "Einkaufsliste"
-            : "Einstellungen";
+            ? t("Einkaufsliste")
+            : t("Einstellungen");
   return (
     <>
       <header className="page-heading">
         <div>
           <span className="eyebrow">
             {tab === "today"
-              ? `${formatDate(baseToday, { weekday: "long", month: "long", day: "numeric" })} · ${data.home.name}`
+              ? `${formatDate(
+                  baseToday,
+                  {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                  },
+                  language,
+                )} · ${data.home.name}`
               : data.home.name}
           </span>
           <h1>{title}</h1>
           <p>
             {tab === "today"
-              ? "Plane deine Woche und halte fest, was du isst."
+              ? t("Plane deine Woche und halte fest, was du isst.")
               : tab === "recipes"
-                ? "Deine Rezeptsammlung zum Nachkochen."
+                ? t("Deine Rezeptsammlung zum Nachkochen.")
                 : tab === "pantry"
-                  ? "Deine Vorräte, Mengen und Haltbarkeitsdaten."
+                  ? t("Deine Vorräte, Mengen und Haltbarkeitsdaten.")
                   : tab === "groceries"
-                    ? "Die gemeinsame Einkaufsliste für deinen Haushalt."
-                    : "Dein Haushalt, deine Verbindungen und dein Konto."}
+                    ? t("Die gemeinsame Einkaufsliste für deinen Haushalt.")
+                    : t("Dein Haushalt, deine Verbindungen und dein Konto.")}
           </p>
         </div>
         {tab !== "settings" && (
@@ -513,12 +598,12 @@ function KitchenContent({
             <Plus size={18} />
             <span>
               {tab === "today"
-                ? "Mahlzeit planen"
+                ? t("Mahlzeit planen")
                 : tab === "recipes"
-                  ? "Rezept hinzufügen"
+                  ? t("Rezept hinzufügen")
                   : tab === "pantry"
-                    ? "Lebensmittel hinzufügen"
-                    : "Artikel hinzufügen"}
+                    ? t("Lebensmittel hinzufügen")
+                    : t("Artikel hinzufügen")}
             </span>
           </button>
         )}
@@ -530,18 +615,18 @@ function KitchenContent({
               <div>
                 <strong>
                   {planned.length}
-                  <small> Mahlzeiten</small>
+                  <small>{t(" Mahlzeiten")}</small>
                 </strong>
-                <span>für diese Woche geplant</span>
+                <span>{t("für diese Woche geplant")}</span>
               </div>
             </div>
             <button className="overview-card" onClick={() => setTab("pantry")}>
               <div>
                 <strong>
                   {expired.length}
-                  <small> Artikel</small>
+                  <small>{t(" Artikel")}</small>
                 </strong>
-                <span>bald verbrauchen</span>
+                <span>{t("bald verbrauchen")}</span>
               </div>
               <ArrowUpRight size={17} />
             </button>
@@ -552,37 +637,38 @@ function KitchenContent({
               <div>
                 <strong>
                   {data.groceries.filter((item) => !item.checked).length}
-                  <small> Artikel</small>
+                  <small>{t(" Artikel")}</small>
                 </strong>
-                <span>noch zu kaufen</span>
+                <span>{t("noch zu kaufen")}</span>
               </div>
               <ArrowUpRight size={17} />
             </button>
           </div>
           <div className="section-heading">
             <div>
-              <h2>Wochenplan</h2>
+              <h2>{t("Wochenplan")}</h2>
             </div>
             <div className="week-controls">
               <button
                 className="icon-button"
-                aria-label="Vorherige Woche"
+                aria-label={t("Vorherige Woche")}
                 onClick={() => setDay(addDays(day, -7))}
               >
                 <ChevronLeft size={18} />
               </button>
               <strong>
-                {formatDate(monday)} — {formatDate(week[6])}
+                {formatDate(monday, undefined, language)} —{" "}
+                {formatDate(week[6], undefined, language)}
               </strong>
               <button
                 className="icon-button"
-                aria-label="Nächste Woche"
+                aria-label={t("Nächste Woche")}
                 onClick={() => setDay(addDays(day, 7))}
               >
                 <ChevronRight size={18} />
               </button>
               <button className="quiet" onClick={() => setDay(baseToday)}>
-                Heute
+                {t("Heute")}
               </button>
             </div>
           </div>
@@ -594,8 +680,24 @@ function KitchenContent({
                 aria-pressed={date === day}
                 onClick={() => setDay(date)}
               >
-                <span>{formatDate(date, { weekday: "short" })}</span>
-                <strong>{formatDate(date, { day: "numeric" })}</strong>
+                <span>
+                  {formatDate(
+                    date,
+                    {
+                      weekday: "short",
+                    },
+                    language,
+                  )}
+                </span>
+                <strong>
+                  {formatDate(
+                    date,
+                    {
+                      day: "numeric",
+                    },
+                    language,
+                  )}
+                </strong>
                 <i
                   className={
                     data.meals.some((item) => item.date === date)
@@ -609,24 +711,34 @@ function KitchenContent({
           <div className="day-heading">
             <h3>
               {day === baseToday
-                ? "Heute"
-                : formatDate(day, {
-                    weekday: "long",
-                    month: "short",
-                    day: "numeric",
-                  })}
+                ? t("Heute")
+                : formatDate(
+                    day,
+                    {
+                      weekday: "long",
+                      month: "short",
+                      day: "numeric",
+                    },
+                    language,
+                  )}
               <span>
                 {data.meals.filter((item) => item.date === day).length}{" "}
-                Mahlzeiten
+                {t("Mahlzeiten")}
               </span>
             </h3>
             <button
               className="text-button"
               onClick={() =>
-                setEditor({ type: "meal", value: { date: day } as Meal })
+                setEditor({
+                  type: "meal",
+                  value: {
+                    date: day,
+                  } as Meal,
+                })
               }
             >
-              <Plus size={16} /> Mahlzeit hinzufügen
+              <Plus size={16} />
+              {t(" Mahlzeit hinzufügen")}
             </button>
           </div>
           <div className="meal-list">
@@ -636,13 +748,14 @@ function KitchenContent({
                 <article className="meal-card" key={meal.id}>
                   <div className="meal-main">
                     <span className="eyebrow">
-                      {mealSlotLabels[meal.slot]}{" "}
-                      {meal.status === "eaten" ? "· GEGESSEN" : ""}
+                      {t(mealSlotLabels[meal.slot])}{" "}
+                      {meal.status === "eaten" ? t("· GEGESSEN") : ""}
                     </span>
                     <h3>{meal.name}</h3>
                     <p>
                       <Users size={14} />
-                      {formatNumber(meal.servings)} Portionen
+                      {formatNumber(meal.servings, language)}
+                      {t(" Portionen")}
                       {meal.notes && <> · {meal.notes}</>}
                     </p>
                     {meal.scalingNotes && (
@@ -657,29 +770,37 @@ function KitchenContent({
                         onClick={() =>
                           perform(
                             "mark_meal_eaten",
-                            { id: meal.id },
-                            "Im Essensverlauf gespeichert.",
+                            {
+                              id: meal.id,
+                            },
+                            t("Im Essensverlauf gespeichert."),
                           )
                         }
                       >
                         <Check size={15} />
-                        <span>Als gegessen markieren</span>
+                        <span>{t("Als gegessen markieren")}</span>
                       </button>
                     ) : (
                       <span className="pill">
-                        <Check size={14} /> Gegessen
+                        <Check size={14} />
+                        {t(" Gegessen")}
                       </span>
                     )}
                     <button
                       className="icon-button"
-                      aria-label={`Bearbeiten: ${meal.name}`}
-                      onClick={() => setEditor({ type: "meal", value: meal })}
+                      aria-label={t("Bearbeiten: {0}", meal.name)}
+                      onClick={() =>
+                        setEditor({
+                          type: "meal",
+                          value: meal,
+                        })
+                      }
                     >
                       <Pencil size={16} />
                     </button>
                     <button
                       className="icon-button danger"
-                      aria-label={`Entfernen: ${meal.name}`}
+                      aria-label={t("Entfernen: {0}", meal.name)}
                       onClick={() => remove("meal", meal)}
                     >
                       <Trash2 size={16} />
@@ -691,11 +812,18 @@ function KitchenContent({
           {!data.meals.some((item) => item.date === day) && (
             <Empty
               icon={<Utensils size={30} />}
-              title="Keine Mahlzeiten geplant"
-              text="Wähle ein Rezept oder trage eine Mahlzeit für diesen Tag ein."
-              action="Mahlzeit planen"
+              title={t("Keine Mahlzeiten geplant")}
+              text={t(
+                "Wähle ein Rezept oder trage eine Mahlzeit für diesen Tag ein.",
+              )}
+              action={t("Mahlzeit planen")}
               onClick={() =>
-                setEditor({ type: "meal", value: { date: day } as Meal })
+                setEditor({
+                  type: "meal",
+                  value: {
+                    date: day,
+                  } as Meal,
+                })
               }
             />
           )}
@@ -703,8 +831,10 @@ function KitchenContent({
             <div>
               <ShoppingBasket size={23} />
               <div>
-                <strong>Einkauf für diese Woche</strong>
-                <p>Ergänze die fehlenden Zutaten aus deinem Wochenplan.</p>
+                <strong>{t("Einkauf für diese Woche")}</strong>
+                <p>
+                  {t("Ergänze die fehlenden Zutaten aus deinem Wochenplan.")}
+                </p>
               </div>
             </div>
             <button
@@ -713,12 +843,16 @@ function KitchenContent({
               onClick={() =>
                 perform(
                   "generate_groceries",
-                  { from: monday, to: week[6] },
-                  "Fehlende Zutaten zur Einkaufsliste hinzugefügt.",
+                  {
+                    from: monday,
+                    to: week[6],
+                  },
+                  t("Fehlende Zutaten zur Einkaufsliste hinzugefügt."),
                 )
               }
             >
-              Einkaufsliste erstellen <ArrowUpRight size={16} />
+              {t("Einkaufsliste erstellen ")}
+              <ArrowUpRight size={16} />
             </button>
           </div>
         </>
@@ -729,13 +863,16 @@ function KitchenContent({
             <label className="search">
               <Search size={18} />
               <input
-                aria-label="Rezepte durchsuchen"
-                placeholder="Rezepte oder Zutaten suchen"
+                aria-label={t("Rezepte durchsuchen")}
+                placeholder={t("Rezepte oder Zutaten suchen")}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
-            <span className="muted">{data.recipes.length} Rezepte</span>
+            <span className="muted">
+              {data.recipes.length}
+              {t(" Rezepte")}
+            </span>
           </div>
           <RecipeList
             recipes={data.recipes.filter((recipe) =>
@@ -749,9 +886,18 @@ function KitchenContent({
               setDetail(recipe);
             }}
             onPlan={(recipe, servings) =>
-              setEditor({ type: "meal", recipe, servings })
+              setEditor({
+                type: "meal",
+                recipe,
+                servings,
+              })
             }
-            onEdit={(recipe) => setEditor({ type: "recipe", value: recipe })}
+            onEdit={(recipe) =>
+              setEditor({
+                type: "recipe",
+                value: recipe,
+              })
+            }
             onFavorite={(recipe) =>
               perform("update_recipe", {
                 ...recipe,
@@ -762,10 +908,16 @@ function KitchenContent({
           {!data.recipes.length && (
             <Empty
               icon={<BookOpen size={30} />}
-              title="Noch keine Rezepte"
-              text="Füge hier ein Rezept hinzu oder bitte deinen verbundenen Agenten darum."
-              action="Rezept hinzufügen"
-              onClick={() => setEditor({ type: "recipe" })}
+              title={t("Noch keine Rezepte")}
+              text={t(
+                "Füge hier ein Rezept hinzu oder bitte deinen verbundenen Agenten darum.",
+              )}
+              action={t("Rezept hinzufügen")}
+              onClick={() =>
+                setEditor({
+                  type: "recipe",
+                })
+              }
             />
           )}
         </>
@@ -781,11 +933,14 @@ function KitchenContent({
                   key={value}
                   onClick={() => setLocation(value)}
                 >
-                  {locationLabels[value as keyof typeof locationLabels]}
+                  {t(locationLabels[value as keyof typeof locationLabels])}
                 </button>
               ))}
             </div>
-            <span className="muted">{data.pantry.length} Artikel vorrätig</span>
+            <span className="muted">
+              {data.pantry.length}
+              {t(" Artikel vorrätig")}
+            </span>
           </div>
           <div className="stock-list">
             {data.pantry
@@ -797,33 +952,45 @@ function KitchenContent({
                   <div className="stock-name">
                     <strong>{item.name}</strong>
                     <small>
-                      {locationLabels[item.location]}
+                      {t(locationLabels[item.location])}
                       {item.expiresOn &&
-                        ` · Haltbar bis ${formatDate(item.expiresOn)}`}
+                        t(
+                          " · Haltbar bis {0}",
+                          formatDate(item.expiresOn, undefined, language),
+                        )}
                     </small>
                   </div>
                   <span className="stock-quantity">
-                    {formatNumber(item.quantity)}{" "}
-                    <small>{unitLabels[item.unit]}</small>
+                    {formatNumber(item.quantity, language)}{" "}
+                    <small>{t(unitLabels[item.unit])}</small>
                   </span>
                   {item.expiresOn && item.expiresOn < baseToday ? (
-                    <span className="pill warning">Datum überschritten</span>
+                    <span className="pill warning">
+                      {t("Datum überschritten")}
+                    </span>
                   ) : (
                     item.expiresOn &&
                     item.expiresOn <= addDays(baseToday, 3) && (
-                      <span className="pill amber">Bald verbrauchen</span>
+                      <span className="pill amber">
+                        {t("Bald verbrauchen")}
+                      </span>
                     )
                   )}
                   <button
                     className="icon-button"
-                    aria-label={`Bearbeiten: ${item.name}`}
-                    onClick={() => setEditor({ type: "pantry", value: item })}
+                    aria-label={t("Bearbeiten: {0}", item.name)}
+                    onClick={() =>
+                      setEditor({
+                        type: "pantry",
+                        value: item,
+                      })
+                    }
                   >
                     <Pencil size={16} />
                   </button>
                   <button
                     className="icon-button danger"
-                    aria-label={`Entfernen: ${item.name}`}
+                    aria-label={t("Entfernen: {0}", item.name)}
                     onClick={() => remove("pantry", item)}
                   >
                     <Trash2 size={16} />
@@ -834,16 +1001,23 @@ function KitchenContent({
           {!data.pantry.length && (
             <Empty
               icon={<PackageOpen size={30} />}
-              title="Noch keine Vorräte"
-              text="Trage deine Vorräte ein, damit sie bei Planung und Einkauf berücksichtigt werden."
-              action="Lebensmittel hinzufügen"
-              onClick={() => setEditor({ type: "pantry" })}
+              title={t("Noch keine Vorräte")}
+              text={t(
+                "Trage deine Vorräte ein, damit sie bei Planung und Einkauf berücksichtigt werden.",
+              )}
+              action={t("Lebensmittel hinzufügen")}
+              onClick={() =>
+                setEditor({
+                  type: "pantry",
+                })
+              }
             />
           )}
           <p className="helper-note">
-            <Leaf size={16} /> Haltbarkeitsdaten helfen bei der Planung.
-            Gegessene Mahlzeiten werden im Verlauf gespeichert; Vorratsmengen
-            änderst du separat.
+            <Leaf size={16} />
+            {t(
+              " Haltbarkeitsdaten helfen bei der Planung. Gegessene Mahlzeiten werden im Verlauf gespeichert; Vorratsmengen änderst du separat.",
+            )}
           </p>
         </>
       )}
@@ -856,7 +1030,7 @@ function KitchenContent({
                 aria-pressed={!showChecked}
                 onClick={() => setShowChecked(false)}
               >
-                Offen{" "}
+                {t("Offen")}{" "}
                 <span>
                   {data.groceries.filter((item) => !item.checked).length}
                 </span>
@@ -866,7 +1040,7 @@ function KitchenContent({
                 aria-pressed={showChecked}
                 onClick={() => setShowChecked(true)}
               >
-                Gekauft{" "}
+                {t("Gekauft")}{" "}
                 <span>
                   {data.groceries.filter((item) => item.checked).length}
                 </span>
@@ -880,15 +1054,15 @@ function KitchenContent({
                   ? perform(
                       "bring_sync",
                       {},
-                      "Bring und LunchJu sind abgeglichen.",
+                      t("Bring und LunchJu sind abgeglichen."),
                     )
                   : setTab("settings")
               }
             >
               <RefreshCw size={16} />
               {data.bring.connected
-                ? "Mit Bring abgleichen"
-                : "Bring verbinden"}
+                ? t("Mit Bring abgleichen")
+                : t("Bring verbinden")}
             </button>
           </div>
           <div className="stock-list">
@@ -902,7 +1076,7 @@ function KitchenContent({
                   <button
                     className="grocery-check"
                     disabled={mutation.isPending}
-                    aria-label={`${item.checked ? "Wieder öffnen" : "Abhaken"} ${item.name}`}
+                    aria-label={`${item.checked ? t("Wieder öffnen") : t("Abhaken")} ${item.name}`}
                     aria-pressed={item.checked}
                     onClick={() =>
                       perform("update_grocery", {
@@ -921,19 +1095,24 @@ function KitchenContent({
                     </small>
                   </div>
                   <span className="stock-quantity">
-                    {formatNumber(item.quantity)}{" "}
-                    <small>{unitLabels[item.unit]}</small>
+                    {formatNumber(item.quantity, language)}{" "}
+                    <small>{t(unitLabels[item.unit])}</small>
                   </span>
                   <button
                     className="icon-button"
-                    aria-label={`Bearbeiten: ${item.name}`}
-                    onClick={() => setEditor({ type: "grocery", value: item })}
+                    aria-label={t("Bearbeiten: {0}", item.name)}
+                    onClick={() =>
+                      setEditor({
+                        type: "grocery",
+                        value: item,
+                      })
+                    }
                   >
                     <Pencil size={16} />
                   </button>
                   <button
                     className="icon-button danger"
-                    aria-label={`Entfernen: ${item.name}`}
+                    aria-label={t("Entfernen: {0}", item.name)}
                     onClick={() => remove("grocery", item)}
                   >
                     <Trash2 size={16} />
@@ -946,26 +1125,36 @@ function KitchenContent({
               icon={<ShoppingBasket size={30} />}
               title={
                 showChecked
-                  ? "Noch nichts gekauft"
-                  : "Die Einkaufsliste ist leer"
+                  ? t("Noch nichts gekauft")
+                  : t("Die Einkaufsliste ist leer")
               }
               text={
                 showChecked
-                  ? "Gekaufte Artikel erscheinen hier."
-                  : "Füge Artikel hinzu oder erstelle die Einkaufsliste aus deinem Wochenplan."
+                  ? t("Gekaufte Artikel erscheinen hier.")
+                  : t(
+                      "Füge Artikel hinzu oder erstelle die Einkaufsliste aus deinem Wochenplan.",
+                    )
               }
-              action="Artikel hinzufügen"
-              onClick={() => setEditor({ type: "grocery" })}
+              action={t("Artikel hinzufügen")}
+              onClick={() =>
+                setEditor({
+                  type: "grocery",
+                })
+              }
             />
           )}
           <div className="shopping-note">
             <span className="bring-mark">b!</span>
             <div>
-              <strong>Bring-Einkaufsliste Stuttgart</strong>
+              <strong>{t("Bring-Einkaufsliste Stuttgart")}</strong>
               <p>
                 {data.bring.connected
-                  ? "Die Bring-Liste Stuttgart ist verbunden. Du kannst sie jederzeit abgleichen."
-                  : "Verbinde die Bring-Liste Stuttgart in den Einstellungen."}
+                  ? t(
+                      "Die Bring-Liste Stuttgart ist verbunden. Du kannst sie jederzeit abgleichen.",
+                    )
+                  : t(
+                      "Verbinde die Bring-Liste Stuttgart in den Einstellungen.",
+                    )}
               </p>
             </div>
           </div>
@@ -974,7 +1163,22 @@ function KitchenContent({
       {tab === "settings" && <Settings data={data} run={run} notify={notify} />}
       {editor && (
         <Modal
-          title={`${{ recipe: "Rezept", meal: "Mahlzeit", pantry: "Lebensmittel", grocery: "Einkaufsartikel" }[editor.type]} ${editor.value?.id ? "bearbeiten" : "hinzufügen"}`}
+          title={t(
+            {
+              recipe: editor.value?.id
+                ? "Rezept bearbeiten"
+                : "Rezept hinzufügen",
+              meal: editor.value?.id
+                ? "Mahlzeit bearbeiten"
+                : "Mahlzeit hinzufügen",
+              pantry: editor.value?.id
+                ? "Lebensmittel bearbeiten"
+                : "Lebensmittel hinzufügen",
+              grocery: editor.value?.id
+                ? "Artikel bearbeiten"
+                : "Artikel hinzufügen",
+            }[editor.type],
+          )}
           onClose={() => setEditor(null)}
         >
           <EditorForm
@@ -982,7 +1186,7 @@ function KitchenContent({
             data={data}
             busy={mutation.isPending}
             save={async (operation, input) => {
-              await run(operation, input, "Gespeichert.");
+              await run(operation, input, t("Gespeichert."));
               setEditor(null);
             }}
             onDelete={
@@ -990,7 +1194,10 @@ function KitchenContent({
                 ? () => {
                     remove(
                       editor.type,
-                      editor.value as { id: string; name: string },
+                      editor.value as {
+                        id: string;
+                        name: string;
+                      },
                     );
                     setEditor(null);
                   }
@@ -1008,16 +1215,25 @@ function KitchenContent({
             setDetail((current) =>
               current?.id === recipe.id ? recipe : current,
             );
-            void client.invalidateQueries({ queryKey: ["catalog"] });
-            notify("Rezeptbild gespeichert.");
+            void client.invalidateQueries({
+              queryKey: ["catalog"],
+            });
+            notify(t("Rezeptbild gespeichert."));
           }}
           onClose={() => setDetail(null)}
           onPlan={(servings) => {
-            setEditor({ type: "meal", recipe: detail, servings });
+            setEditor({
+              type: "meal",
+              recipe: detail,
+              servings,
+            });
             setDetail(null);
           }}
           onEdit={() => {
-            setEditor({ type: "recipe", value: detail });
+            setEditor({
+              type: "recipe",
+              value: detail,
+            });
             setDetail(null);
           }}
         />
@@ -1025,7 +1241,6 @@ function KitchenContent({
     </>
   );
 }
-
 function Empty({
   icon,
   title,
@@ -1068,6 +1283,7 @@ function Modal({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement;
@@ -1121,7 +1337,7 @@ function Modal({
           </div>
           <button
             className="icon-button"
-            aria-label="Dialog schließen"
+            aria-label={t("Dialog schließen")}
             onClick={onClose}
           >
             <X size={22} />
@@ -1145,11 +1361,16 @@ function EditorForm({
   save: (operation: string, input: unknown) => Promise<void>;
   onDelete?: () => void;
 }) {
+  const { t } = useI18n();
   const value = editor.value,
     [ingredients, setIngredients] = useState<Ingredient[]>(
       editor.type === "recipe"
         ? ((value as Recipe)?.ingredients ?? [
-            { name: "", quantity: 1, unit: "piece" },
+            {
+              name: "",
+              quantity: 1,
+              unit: "piece",
+            },
           ])
         : [],
     ),
@@ -1203,8 +1424,12 @@ function EditorForm({
         notes: str("notes"),
         status: str("status"),
         ...(str("recipeId")
-          ? { recipeId: str("recipeId") }
-          : { name: str("name") }),
+          ? {
+              recipeId: str("recipeId"),
+            }
+          : {
+              name: str("name"),
+            }),
       };
       operation = value?.id ? "update_meal" : "plan_meal";
     } else {
@@ -1213,7 +1438,11 @@ function EditorForm({
         quantity: number("quantity"),
         unit: str("unit"),
         notes: str("notes"),
-        ...(value?.id ? { checked: (value as Grocery).checked } : {}),
+        ...(value?.id
+          ? {
+              checked: (value as Grocery).checked,
+            }
+          : {}),
       };
       operation = value?.id ? "update_grocery" : "add_grocery";
     }
@@ -1223,7 +1452,7 @@ function EditorForm({
       await save(operation, input);
     } catch (error) {
       setError(
-        error instanceof Error ? error.message : "Speichern fehlgeschlagen.",
+        error instanceof Error ? error.message : t("Speichern fehlgeschlagen."),
       );
     }
   }
@@ -1232,7 +1461,9 @@ function EditorForm({
       {editor.type !== "meal" && (
         <Field
           label={
-            editor.type === "recipe" ? "Rezeptname" : "Lebensmittel oder Zutat"
+            editor.type === "recipe"
+              ? t("Rezeptname")
+              : t("Lebensmittel oder Zutat")
           }
         >
           <input
@@ -1241,7 +1472,7 @@ function EditorForm({
             maxLength={160}
             placeholder={
               editor.type === "recipe"
-                ? "Pasta mit Tomatensoße"
+                ? t("Pasta mit Tomatensoße")
                 : "z. B. Kirschtomaten"
             }
             defaultValue={value?.name}
@@ -1250,17 +1481,19 @@ function EditorForm({
       )}
       {editor.type === "recipe" && (
         <>
-          <Field label="Beschreibung">
+          <Field label={t("Beschreibung")}>
             <textarea
               name="description"
               rows={2}
               maxLength={3000}
               defaultValue={(value as Recipe)?.description}
-              placeholder="Ein schnelles Abendessen, fertig in einer halben Stunde."
+              placeholder={t(
+                "Ein schnelles Abendessen, fertig in einer halben Stunde.",
+              )}
             />
           </Field>
           <div className="form-row">
-            <Field label="Portionen">
+            <Field label={t("Portionen")}>
               <input
                 name="servings"
                 type="number"
@@ -1271,7 +1504,7 @@ function EditorForm({
                 defaultValue={(value as Recipe)?.servings ?? 2}
               />
             </Field>
-            <Field label="Zeit in Minuten">
+            <Field label={t("Zeit in Minuten")}>
               <input
                 name="minutes"
                 type="number"
@@ -1283,14 +1516,15 @@ function EditorForm({
             </Field>
           </div>
           <div className="ingredient-heading">
-            <strong>Zutaten</strong>
-            <small>Für die angegebene Portionszahl</small>
+            <strong>{t("Zutaten")}</strong>
+            <small>{t("Für die angegebene Portionszahl")}</small>
           </div>
           {ingredients.map((ingredient, index) => (
             <div className="ingredient-editor" key={index}>
               <div className="ingredient-input">
                 <label className="sr-only" htmlFor={`ing-${index}`}>
-                  Zutat {index + 1}
+                  {t("Zutat ")}
+                  {index + 1}
                 </label>
                 <input
                   id={`ing-${index}`}
@@ -1300,25 +1534,31 @@ function EditorForm({
                     setIngredients((items) =>
                       items.map((item, i) =>
                         i === index
-                          ? { ...item, name: event.target.value }
+                          ? {
+                              ...item,
+                              name: event.target.value,
+                            }
                           : item,
                       ),
                     )
                   }
-                  placeholder="Zutat"
+                  placeholder={t("Zutat")}
                   required
                   maxLength={160}
                 />
                 <input
                   name={`quantity-${index}`}
-                  aria-label={`Menge für Zutat ${index + 1}`}
+                  aria-label={t("Menge für Zutat {0}", index + 1)}
                   type="number"
                   value={ingredient.quantity}
                   onChange={(event) =>
                     setIngredients((items) =>
                       items.map((item, i) =>
                         i === index
-                          ? { ...item, quantity: Number(event.target.value) }
+                          ? {
+                              ...item,
+                              quantity: Number(event.target.value),
+                            }
                           : item,
                       ),
                     )
@@ -1330,7 +1570,7 @@ function EditorForm({
                 />
                 <select
                   name={`unit-${index}`}
-                  aria-label={`Einheit für Zutat ${index + 1}`}
+                  aria-label={t("Einheit für Zutat {0}", index + 1)}
                   value={ingredient.unit}
                   onChange={(event) =>
                     setIngredients((items) =>
@@ -1347,7 +1587,7 @@ function EditorForm({
                 >
                   {units.map((unit) => (
                     <option key={unit} value={unit}>
-                      {unitLabels[unit as keyof typeof unitLabels]}
+                      {t(unitLabels[unit as keyof typeof unitLabels])}
                     </option>
                   ))}
                 </select>
@@ -1355,7 +1595,7 @@ function EditorForm({
                   type="button"
                   className="icon-button"
                   disabled={ingredients.length <= 1}
-                  aria-label={`Zutat ${index + 1} entfernen`}
+                  aria-label={t("Zutat {0} entfernen", index + 1)}
                   onClick={() =>
                     setIngredients((items) =>
                       items.filter((_, i) => i !== index),
@@ -1367,7 +1607,7 @@ function EditorForm({
               </div>
               <details className="ingredient-scaling-editor">
                 <summary>
-                  Skalierung
+                  {t("Skalierung")}
                   {ingredient.scaling?.mode === "fixed" ||
                   ingredient.scaling?.roundUpTo ||
                   ingredient.scaling?.note
@@ -1375,9 +1615,9 @@ function EditorForm({
                     : " anpassen"}
                 </summary>
                 <div className="form-row">
-                  <Field label="Menge bei anderer Personenzahl">
+                  <Field label={t("Menge bei anderer Personenzahl")}>
                     <select
-                      aria-label={`Skalierung für Zutat ${index + 1}`}
+                      aria-label={t("Skalierung für Zutat {0}", index + 1)}
                       value={ingredient.scaling?.mode ?? "linear"}
                       onChange={(event) =>
                         setIngredients((items) =>
@@ -1398,13 +1638,16 @@ function EditorForm({
                       }
                     >
                       <option value="linear">
-                        Mit der Personenzahl anpassen
+                        {t("Mit der Personenzahl anpassen")}
                       </option>
-                      <option value="fixed">Menge gleich lassen</option>
+                      <option value="fixed">{t("Menge gleich lassen")}</option>
                     </select>
                   </Field>
                   <Field
-                    label={`Aufrunden auf (${unitLabels[ingredient.unit]}, optional)`}
+                    label={t(
+                      "Aufrunden auf ({0}, optional)",
+                      t(unitLabels[ingredient.unit]),
+                    )}
                   >
                     <input
                       type="number"
@@ -1412,7 +1655,7 @@ function EditorForm({
                       max="100000"
                       step="any"
                       value={ingredient.scaling?.roundUpTo ?? ""}
-                      aria-label={`Aufrunden für Zutat ${index + 1}`}
+                      aria-label={t("Aufrunden für Zutat {0}", index + 1)}
                       onChange={(event) =>
                         setIngredients((items) =>
                           items.map((item, i) =>
@@ -1433,15 +1676,18 @@ function EditorForm({
                           ),
                         )
                       }
-                      placeholder="z. B. 1 für ganze Eier"
+                      placeholder={t("z. B. 1 für ganze Eier")}
                     />
                   </Field>
                 </div>
-                <Field label="Hinweis zur Zutat (optional)">
+                <Field label={t("Hinweis zur Zutat (optional)")}>
                   <input
                     maxLength={500}
                     value={ingredient.scaling?.note ?? ""}
-                    aria-label={`Skalierungshinweis für Zutat ${index + 1}`}
+                    aria-label={t(
+                      "Skalierungshinweis für Zutat {0}",
+                      index + 1,
+                    )}
                     onChange={(event) =>
                       setIngredients((items) =>
                         items.map((item, i) =>
@@ -1458,7 +1704,7 @@ function EditorForm({
                         ),
                       )
                     }
-                    placeholder="z. B. Gewürze zum Schluss abschmecken"
+                    placeholder={t("z. B. Gewürze zum Schluss abschmecken")}
                   />
                 </Field>
               </details>
@@ -1470,41 +1716,48 @@ function EditorForm({
             onClick={() =>
               setIngredients((items) => [
                 ...items,
-                { name: "", quantity: 1, unit: "piece" },
+                {
+                  name: "",
+                  quantity: 1,
+                  unit: "piece",
+                },
               ])
             }
           >
-            <Plus size={16} /> Zutat hinzufügen
+            <Plus size={16} />
+            {t(" Zutat hinzufügen")}
           </button>
-          <Field label="Zubereitungsschritte, einer pro Zeile">
+          <Field label={t("Zubereitungsschritte, einer pro Zeile")}>
             <textarea
               name="instructions"
               required
               rows={5}
               maxLength={30000}
               defaultValue={(value as Recipe)?.instructions.join("\n")}
-              placeholder={
-                "Gemüse schneiden.\nEtwas Olivenöl in einer Pfanne erhitzen.\nZutaten anbraten und abschmecken."
-              }
+              placeholder={t(
+                "Gemüse schneiden.\nEtwas Olivenöl in einer Pfanne erhitzen.\nZutaten anbraten und abschmecken.",
+              )}
             />
           </Field>
-          <Field label="Hinweise für andere Personenzahlen (optional)">
+          <Field label={t("Hinweise für andere Personenzahlen (optional)")}>
             <textarea
               name="scalingNotes"
               rows={2}
               maxLength={2000}
               defaultValue={(value as Recipe)?.scalingNotes}
-              placeholder="z. B. Ab 6 Personen in zwei Pfannen braten. Garzeit bleibt gleich."
+              placeholder={t(
+                "z. B. Ab 6 Personen in zwei Pfannen braten. Garzeit bleibt gleich.",
+              )}
             />
           </Field>
-          <Field label="Schlagwörter, durch Kommas getrennt">
+          <Field label={t("Schlagwörter, durch Kommas getrennt")}>
             <input
               name="tags"
               defaultValue={(value as Recipe)?.tags.join(", ")}
-              placeholder="Schnell, Vegetarisch, Lieblingsgericht"
+              placeholder={t("Schnell, Vegetarisch, Lieblingsgericht")}
             />
           </Field>
-          <Field label="Link zum Originalrezept (optional)">
+          <Field label={t("Link zum Originalrezept (optional)")}>
             <input
               name="sourceUrl"
               type="url"
@@ -1516,7 +1769,7 @@ function EditorForm({
       )}
       {(editor.type === "pantry" || editor.type === "grocery") && (
         <div className="form-row">
-          <Field label="Menge">
+          <Field label={t("Menge")}>
             <input
               name="quantity"
               type="number"
@@ -1527,14 +1780,14 @@ function EditorForm({
               defaultValue={(value as PantryItem | Grocery)?.quantity ?? 1}
             />
           </Field>
-          <Field label="Einheit">
+          <Field label={t("Einheit")}>
             <select
               name="unit"
               defaultValue={(value as PantryItem | Grocery)?.unit ?? "piece"}
             >
               {units.map((unit) => (
                 <option key={unit} value={unit}>
-                  {unitLabels[unit as keyof typeof unitLabels]}
+                  {t(unitLabels[unit as keyof typeof unitLabels])}
                 </option>
               ))}
             </select>
@@ -1543,19 +1796,19 @@ function EditorForm({
       )}
       {editor.type === "pantry" && (
         <div className="form-row">
-          <Field label="Lagerort">
+          <Field label={t("Lagerort")}>
             <select
               name="location"
               defaultValue={(value as PantryItem)?.location ?? "Pantry"}
             >
               {["Pantry", "Fridge", "Freezer"].map((value) => (
                 <option key={value} value={value}>
-                  {locationLabels[value as keyof typeof locationLabels]}
+                  {t(locationLabels[value as keyof typeof locationLabels])}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="Haltbar bis (optional)">
+          <Field label={t("Haltbar bis (optional)")}>
             <input
               name="expiresOn"
               type="date"
@@ -1566,14 +1819,14 @@ function EditorForm({
       )}
       {editor.type === "meal" && (
         <>
-          <Field label="Rezept auswählen">
+          <Field label={t("Rezept auswählen")}>
             <select
               name="recipeId"
               defaultValue={
                 (value as Meal)?.recipeId ?? editor.recipe?.id ?? ""
               }
             >
-              <option value="">Mahlzeit ohne Rezept</option>
+              <option value="">{t("Mahlzeit ohne Rezept")}</option>
               {data.recipes.map((recipe) => (
                 <option value={recipe.id} key={recipe.id}>
                   {recipe.name}
@@ -1581,16 +1834,16 @@ function EditorForm({
               ))}
             </select>
           </Field>
-          <Field label="Mahlzeit (ohne ausgewähltes Rezept)">
+          <Field label={t("Mahlzeit (ohne ausgewähltes Rezept)")}>
             <input
               name="name"
               maxLength={160}
               defaultValue={value?.name ?? ""}
-              placeholder="z. B. Essen gehen, Reste, selbstgemachte Pizza"
+              placeholder={t("z. B. Essen gehen, Reste, selbstgemachte Pizza")}
             />
           </Field>
           <div className="form-row">
-            <Field label="Datum">
+            <Field label={t("Datum")}>
               <input
                 name="date"
                 type="date"
@@ -1600,21 +1853,21 @@ function EditorForm({
                 }
               />
             </Field>
-            <Field label="Mahlzeit">
+            <Field label={t("Mahlzeit")}>
               <select
                 name="slot"
                 defaultValue={(value as Meal)?.slot ?? "dinner"}
               >
                 {["breakfast", "lunch", "dinner", "snack"].map((slot) => (
                   <option key={slot} value={slot}>
-                    {mealSlotLabels[slot as keyof typeof mealSlotLabels]}
+                    {t(mealSlotLabels[slot as keyof typeof mealSlotLabels])}
                   </option>
                 ))}
               </select>
             </Field>
           </div>
           <div className="form-row">
-            <Field label="Portionen">
+            <Field label={t("Portionen")}>
               <input
                 name="servings"
                 type="number"
@@ -1630,26 +1883,26 @@ function EditorForm({
                 }
               />
             </Field>
-            <Field label="Status">
+            <Field label={t("Status")}>
               <select
                 name="status"
                 defaultValue={(value as Meal)?.status ?? "planned"}
               >
-                <option value="planned">Geplant</option>
-                <option value="eaten">Gegessen</option>
+                <option value="planned">{t("Geplant")}</option>
+                <option value="eaten">{t("Gegessen")}</option>
               </select>
             </Field>
           </div>
         </>
       )}
       {(editor.type === "meal" || editor.type === "grocery") && (
-        <Field label="Notizen (optional)">
+        <Field label={t("Notizen (optional)")}>
           <textarea
             name="notes"
             rows={2}
             maxLength={1000}
             defaultValue={(value as Meal | Grocery)?.notes}
-            placeholder="Weitere Hinweise"
+            placeholder={t("Weitere Hinweise")}
           />
         </Field>
       )}
@@ -1665,12 +1918,13 @@ function EditorForm({
             type="button"
             onClick={onDelete}
           >
-            <Trash2 size={16} /> Entfernen
+            <Trash2 size={16} />
+            {t(" Entfernen")}
           </button>
         )}
         <button className="primary" disabled={busy}>
           <Check size={17} />
-          {busy ? "Wird gespeichert…" : "Speichern"}
+          {busy ? t("Wird gespeichert…") : t("Speichern")}
         </button>
       </div>
     </form>
@@ -1691,6 +1945,7 @@ function RecipeDetail({
   onPlan: (servings: number) => void;
   onEdit: () => void;
 }) {
+  const { t, language } = useI18n();
   const [people, setPeople] = useState(String(initialServings));
   const servings = personCount(people);
   const ingredients =
@@ -1699,7 +1954,10 @@ function RecipeDetail({
     queryKey: ["readiness", recipe.id, recipe.updatedAt, servings],
     enabled: servings !== null,
     queryFn: () =>
-      action<{ canCook: boolean; missing: Ingredient[] }>("check_ingredients", {
+      action<{
+        canCook: boolean;
+        missing: Ingredient[];
+      }>("check_ingredients", {
         recipeId: recipe.id,
         servings,
       }),
@@ -1712,7 +1970,8 @@ function RecipeDetail({
         <div className="detail-controls">
           <span>
             <Clock size={16} />
-            {formatNumber(recipe.minutes)} Minuten
+            {formatNumber(recipe.minutes, language)}
+            {t(" Minuten")}
           </span>
           <ServingsControl
             value={people}
@@ -1723,22 +1982,22 @@ function RecipeDetail({
         <div className={check.data?.canCook ? "readiness ready" : "readiness"}>
           <PackageOpen size={19} />
           {servings === null
-            ? "Wähle eine Personenzahl zwischen 0,1 und 100."
+            ? t("Wähle eine Personenzahl zwischen 0,1 und 100.")
             : check.isPending
-              ? "Vorräte werden geprüft…"
+              ? t("Vorräte werden geprüft…")
               : check.error
-                ? "Vorräte konnten nicht geprüft werden."
+                ? t("Vorräte konnten nicht geprüft werden.")
                 : check.data?.canCook
-                  ? "Alle Zutaten sind vorhanden."
-                  : `${check.data?.missing.length} Zutaten fehlen.`}
+                  ? t("Alle Zutaten sind vorhanden.")
+                  : t("{0} Zutaten fehlen.", check.data?.missing.length)}
         </div>
         {recipe.scalingNotes && (
           <aside className="scaling-notes">
-            <strong>Hinweise zur Personenzahl</strong>
+            <strong>{t("Hinweise zur Personenzahl")}</strong>
             <p>{recipe.scalingNotes}</p>
           </aside>
         )}
-        <h3>Zutaten</h3>
+        <h3>{t("Zutaten")}</h3>
         <ul className="ingredients-list">
           {ingredients.map((item, index) => (
             <li key={index}>
@@ -1750,10 +2009,14 @@ function RecipeDetail({
                   <small className="ingredient-scaling-note">
                     {[
                       item.scaling.mode === "fixed"
-                        ? "Menge bleibt gleich"
+                        ? t("Menge bleibt gleich")
                         : "",
                       item.scaling.roundUpTo
-                        ? `Auf ${formatNumber(item.scaling.roundUpTo)} ${unitLabels[item.unit]} aufgerundet`
+                        ? t(
+                            "Auf {0} {1} aufgerundet",
+                            formatNumber(item.scaling.roundUpTo, language),
+                            t(unitLabels[item.unit]),
+                          )
                         : "",
                       item.scaling.note,
                     ]
@@ -1763,12 +2026,13 @@ function RecipeDetail({
                 )}
               </span>
               <strong>
-                {formatNumber(item.quantity)} {unitLabels[item.unit]}
+                {formatNumber(item.quantity, language)}{" "}
+                {t(unitLabels[item.unit])}
               </strong>
             </li>
           ))}
         </ul>
-        <h3>Zubereitung</h3>
+        <h3>{t("Zubereitung")}</h3>
         <ol className="steps">
           {recipe.instructions.map((step, index) => (
             <li key={index}>{step}</li>
@@ -1781,19 +2045,22 @@ function RecipeDetail({
             target="_blank"
             rel="noopener noreferrer"
           >
-            Originalrezept <ArrowUpRight size={16} />
+            {t("Originalrezept ")}
+            <ArrowUpRight size={16} />
           </a>
         )}
         <div className="form-footer">
           <button className="secondary" onClick={onEdit}>
-            <Pencil size={16} /> Rezept bearbeiten
+            <Pencil size={16} />
+            {t(" Rezept bearbeiten")}
           </button>
           <button
             className="primary"
             disabled={servings === null}
             onClick={() => onPlan(servings!)}
           >
-            <CalendarDays size={16} /> Mahlzeit planen
+            <CalendarDays size={16} />
+            {t(" Mahlzeit planen")}
           </button>
         </div>
       </div>
@@ -1807,6 +2074,7 @@ function RecipeImageEditor({
   recipe: Recipe;
   onSaved: (recipe: Recipe) => void;
 }) {
+  const { t } = useI18n();
   const [editing, setEditing] = useState(false),
     [file, setFile] = useState<File | null>(null),
     [preview, setPreview] = useState(""),
@@ -1834,10 +2102,12 @@ function RecipeImageEditor({
         body: form,
         credentials: "same-origin",
       });
-      const result = (await response.json()) as Recipe & { error?: string };
+      const result = (await response.json()) as Recipe & {
+        error?: string;
+      };
       if (!response.ok)
         throw new ApiError(
-          result.error || "Das Bild konnte nicht gespeichert werden.",
+          result.error || t("Das Bild konnte nicht gespeichert werden."),
         );
       onSaved(result);
       setFile(null);
@@ -1846,14 +2116,14 @@ function RecipeImageEditor({
       setError(
         error instanceof ApiError
           ? error.message
-          : "Das Bild konnte nicht gespeichert werden.",
+          : t("Das Bild konnte nicht gespeichert werden."),
       );
     } finally {
       setBusy(false);
     }
   }
   return (
-    <section className="recipe-image-editor" aria-label="Rezeptbild">
+    <section className="recipe-image-editor" aria-label={t("Rezeptbild")}>
       {(preview || recipe.imageUrl) && (
         <img
           className="recipe-cover"
@@ -1873,14 +2143,14 @@ function RecipeImageEditor({
             }}
           >
             <ImagePlus size={17} />
-            {recipe.imageUrl ? "Bild ersetzen" : "Bild hinzufügen"}
+            {recipe.imageUrl ? t("Bild ersetzen") : t("Bild hinzufügen")}
           </button>
           {recipe.imageUrl && (
             <button
               className="text-button danger"
               disabled={busy}
               onClick={async () => {
-                if (!confirm("Dieses Rezeptbild entfernen?")) return;
+                if (!confirm(t("Dieses Rezeptbild entfernen?"))) return;
                 setBusy(true);
                 setError("");
                 try {
@@ -1893,7 +2163,7 @@ function RecipeImageEditor({
                   setError(
                     error instanceof Error
                       ? error.message
-                      : "Das Bild konnte nicht entfernt werden.",
+                      : t("Das Bild konnte nicht entfernt werden."),
                   );
                 } finally {
                   setBusy(false);
@@ -1901,13 +2171,13 @@ function RecipeImageEditor({
               }}
             >
               <Trash2 size={15} />
-              Bild entfernen
+              {t("Bild entfernen")}
             </button>
           )}
         </div>
       ) : (
         <form onSubmit={upload}>
-          <Field label="Rezeptbild (JPG, PNG oder WebP, bis 5 MB)">
+          <Field label={t("Rezeptbild (JPG, PNG oder WebP, bis 5 MB)")}>
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -1917,25 +2187,25 @@ function RecipeImageEditor({
                 const selected = event.target.files?.[0];
                 setError("");
                 if (selected && selected.size > 5 * 1024 * 1024) {
-                  setError("Bilder dürfen höchstens 5 MB groß sein.");
+                  setError(t("Bilder dürfen höchstens 5 MB groß sein."));
                   event.target.value = "";
                   setFile(null);
                 } else setFile(selected ?? null);
               }}
             />
           </Field>
-          <Field label="Bildbeschreibung">
+          <Field label={t("Bildbeschreibung")}>
             <input
               name="altText"
               maxLength={500}
               defaultValue={recipe.imageAlt || recipe.name}
-              placeholder="Beschreibe das Gericht auf dem Bild"
+              placeholder={t("Beschreibe das Gericht auf dem Bild")}
               disabled={busy}
             />
           </Field>
           <div className="button-row">
             <button className="secondary" disabled={busy || !file}>
-              {busy ? "Wird hochgeladen…" : "Bild speichern"}
+              {busy ? t("Wird hochgeladen…") : t("Bild speichern")}
             </button>
             <button
               type="button"
@@ -1947,7 +2217,7 @@ function RecipeImageEditor({
                 setError("");
               }}
             >
-              Abbrechen
+              {t("Abbrechen")}
             </button>
           </div>
         </form>
@@ -1974,6 +2244,7 @@ function Settings({
   run: Run;
   notify: (message: string) => void;
 }) {
+  const { t, locale } = useI18n();
   const client = useQueryClient(),
     [busy, setBusy] = useState(false),
     [invitation, setInvitation] = useState("");
@@ -1981,15 +2252,23 @@ function Settings({
   const members = useQuery({
     queryKey: ["members"],
     queryFn: () =>
-      action<{ members: (User & { active: number })[] }>("list_members"),
+      action<{
+        members: (User & {
+          active: number;
+        })[];
+      }>("list_members"),
     enabled: owner,
   });
   const keys = useQuery({
     queryKey: ["passkeys"],
     queryFn: () =>
-      action<{ passkeys: { id: string; name: string; created_at: string }[] }>(
-        "list_passkeys",
-      ),
+      action<{
+        passkeys: {
+          id: string;
+          name: string;
+          created_at: string;
+        }[];
+      }>("list_passkeys"),
   });
   async function doRun(operation: string, input?: unknown, message?: string) {
     setBusy(true);
@@ -2008,12 +2287,16 @@ function Settings({
         Parameters<typeof startRegistration>[0]["optionsJSON"]
       >("/api/auth/register/options", {
         name: data.user.name,
-        label: `Passkey ${new Date().toLocaleDateString("de-DE")}`,
+        label: `Passkey ${new Date().toLocaleDateString(locale)}`,
       });
-      const response = await startRegistration({ optionsJSON: options });
+      const response = await startRegistration({
+        optionsJSON: options,
+      });
       await request("/api/auth/register/verify", response);
-      await client.invalidateQueries({ queryKey: ["passkeys"] });
-      notify("Passkey hinzugefügt.");
+      await client.invalidateQueries({
+        queryKey: ["passkeys"],
+      });
+      notify(t("Passkey hinzugefügt."));
     } catch (error) {
       notify(passkeyError(error));
     } finally {
@@ -2023,24 +2306,29 @@ function Settings({
   async function copy(value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      notify("In die Zwischenablage kopiert.");
+      notify(t("In die Zwischenablage kopiert."));
     } catch {
-      notify("Markiere und kopiere den Link unten.");
+      notify(t("Markiere und kopiere den Link unten."));
     }
   }
   return (
     <div className="settings-grid">
+      <section className="settings-card">
+        <h2>{t("Sprache")}</h2>
+        <LanguageSelector />
+      </section>
       <section className="settings-card agent-settings">
         <span className="soft-icon">
           <Bot size={26} />
         </span>
-        <h2>Agentenzugang</h2>
+        <h2>{t("Agentenzugang")}</h2>
         <p>
-          Dein Agent kann Rezepte, Vorräte und Mahlzeiten für Stuttgart
-          verwalten. Seine Berechtigungen legst du beim Verbinden fest.
+          {t(
+            "Dein Agent kann Rezepte, Vorräte und Mahlzeiten für Stuttgart verwalten. Seine Berechtigungen legst du beim Verbinden fest.",
+          )}
         </p>
         <label className="copy-field">
-          <span className="sr-only">MCP-Verbindungsadresse</span>
+          <span className="sr-only">{t("MCP-Verbindungsadresse")}</span>
           <input
             readOnly
             value={
@@ -2051,33 +2339,36 @@ function Settings({
           />
           <button
             className="icon-button"
-            aria-label="MCP-Adresse kopieren"
+            aria-label={t("MCP-Adresse kopieren")}
             onClick={() => copy(`${window.location.origin}/mcp`)}
           >
             <Copy size={17} />
           </button>
         </label>
         <small>
-          Füge diese MCP-Adresse in den Einstellungen deines Agenten hinzu und
-          wähle OAuth. Melde dich mit deinem LunchJu-Passkey an.
+          {t(
+            "Füge diese MCP-Adresse in den Einstellungen deines Agenten hinzu und wähle OAuth. Melde dich mit deinem LunchJu-Passkey an.",
+          )}
         </small>
         <a className="secondary" href="/oauth/grants">
-          Verbundene Agenten verwalten <ArrowUpRight size={16} />
+          {t("Verbundene Agenten verwalten ")}
+          <ArrowUpRight size={16} />
         </a>
         <div className="example-prompt">
-          „Plane drei vegetarische Abendessen und ergänze die fehlenden Zutaten
-          auf der Einkaufsliste.“
+          {t(
+            "„Plane drei vegetarische Abendessen und ergänze die fehlenden Zutaten auf der Einkaufsliste.“",
+          )}
         </div>
       </section>
       <section className="settings-card">
         <span className="soft-icon">
           <KeyRound size={24} />
         </span>
-        <h2>Passkeys</h2>
+        <h2>{t("Passkeys")}</h2>
         <p>
-          Nutze Passkeys auf deinen Geräten oder über einen synchronisierten
-          Passwortmanager. Hinterlege vor einem Gerätewechsel einen weiteren
-          Passkey.
+          {t(
+            "Nutze Passkeys auf deinen Geräten oder über einen synchronisierten Passwortmanager. Hinterlege vor einem Gerätewechsel einen weiteren Passkey.",
+          )}
         </p>
         {keys.data?.passkeys.map((key) => (
           <div className="settings-list-row" key={key.id}>
@@ -2085,19 +2376,21 @@ function Settings({
             <span>
               {key.name}
               <small>
-                {new Date(key.created_at).toLocaleDateString("de-DE")}
+                {new Date(key.created_at).toLocaleDateString(locale)}
               </small>
             </span>
             <button
               className="icon-button danger"
               disabled={busy || (keys.data?.passkeys.length ?? 0) < 2}
-              aria-label={`Entfernen: ${key.name}`}
+              aria-label={t("Entfernen: {0}", key.name)}
               onClick={() => {
-                if (confirm("Diesen Passkey entfernen?"))
+                if (confirm(t("Diesen Passkey entfernen?")))
                   void doRun(
                     "delete_passkey",
-                    { credentialId: key.id },
-                    "Passkey entfernt.",
+                    {
+                      credentialId: key.id,
+                    },
+                    t("Passkey entfernt."),
                   );
               }}
             >
@@ -2107,7 +2400,8 @@ function Settings({
         ))}
         {keys.error && <p className="error">{keys.error.message}</p>}
         <button className="secondary" disabled={busy} onClick={addPasskey}>
-          <Plus size={17} /> Passkey hinzufügen
+          <Plus size={17} />
+          {t(" Passkey hinzufügen")}
         </button>
         <button
           className="text-button"
@@ -2117,21 +2411,24 @@ function Settings({
             location.assign("/");
           }}
         >
-          <LogOut size={16} /> Abmelden
+          <LogOut size={16} />
+          {t(" Abmelden")}
         </button>
       </section>
       <section className="settings-card">
         <span className="bring-mark">b!</span>
-        <h2>Bring</h2>
+        <h2>{t("Bring")}</h2>
         <p>
-          Verbunden wird ausschließlich die Bring-Liste Stuttgart. Neue und
-          abgehakte Artikel werden beim Abgleich in beide Richtungen übernommen.
+          {t(
+            "Verbunden wird ausschließlich die Bring-Liste Stuttgart. Neue und abgehakte Artikel werden beim Abgleich in beide Richtungen übernommen.",
+          )}
         </p>
         {owner ? (
           data.bring.connected ? (
             <>
               <p className="helper-note">
-                Verbundene Liste: <strong>Stuttgart</strong>
+                {t("Verbundene Liste: ")}
+                <strong>Stuttgart</strong>
               </p>
               <div className="button-row">
                 <button
@@ -2141,11 +2438,12 @@ function Settings({
                     void doRun(
                       "bring_sync",
                       {},
-                      "Die Bring-Einkaufsliste ist abgeglichen.",
+                      t("Die Bring-Einkaufsliste ist abgeglichen."),
                     )
                   }
                 >
-                  <RefreshCw size={16} /> Jetzt abgleichen
+                  <RefreshCw size={16} />
+                  {t(" Jetzt abgleichen")}
                 </button>
                 <button
                   className="text-button danger"
@@ -2153,17 +2451,19 @@ function Settings({
                   onClick={() => {
                     if (
                       confirm(
-                        "Bring trennen und die gespeicherten Zugangstokens löschen?",
+                        t(
+                          "Bring trennen und die gespeicherten Zugangstokens löschen?",
+                        ),
                       )
                     )
                       void doRun(
                         "bring_disconnect",
                         {},
-                        "Bring wurde getrennt.",
+                        t("Bring wurde getrennt."),
                       );
                   }}
                 >
-                  Trennen
+                  {t("Trennen")}
                 </button>
               </div>
             </>
@@ -2175,13 +2475,16 @@ function Settings({
                   form = new FormData(element);
                 const result = await doRun(
                   "bring_connect",
-                  { email: form.get("email"), password: form.get("password") },
-                  "Bring ist mit Stuttgart verbunden.",
+                  {
+                    email: form.get("email"),
+                    password: form.get("password"),
+                  },
+                  t("Bring ist mit Stuttgart verbunden."),
                 );
                 if (result) element.reset();
               }}
             >
-              <Field label="Bring-E-Mail">
+              <Field label={t("Bring-E-Mail")}>
                 <input
                   name="email"
                   type="email"
@@ -2189,7 +2492,7 @@ function Settings({
                   required
                 />
               </Field>
-              <Field label="Bring-Passwort">
+              <Field label={t("Bring-Passwort")}>
                 <input
                   name="password"
                   type="password"
@@ -2198,18 +2501,22 @@ function Settings({
                 />
               </Field>
               <button className="secondary" disabled={busy}>
-                {busy ? "Verbindung wird hergestellt…" : "Bring verbinden"}
+                {busy
+                  ? t("Verbindung wird hergestellt…")
+                  : t("Bring verbinden")}
               </button>
               <small>
-                Das Passwort wird nur zur Anmeldung bei Bring verwendet und
-                nicht gespeichert.
+                {t(
+                  "Das Passwort wird nur zur Anmeldung bei Bring verwendet und nicht gespeichert.",
+                )}
               </small>
             </form>
           )
         ) : (
           <p className="helper-note">
-            Die Bring-Verbindung wird vom Haushaltsinhaber verwaltet. Alle
-            Mitglieder können die Einkaufsliste abgleichen.
+            {t(
+              "Die Bring-Verbindung wird vom Haushaltsinhaber verwaltet. Alle Mitglieder können die Einkaufsliste abgleichen.",
+            )}
           </p>
         )}
       </section>
@@ -2217,10 +2524,11 @@ function Settings({
         <span className="soft-icon">
           <Leaf size={24} />
         </span>
-        <h2>Ernährungswünsche</h2>
+        <h2>{t("Ernährungswünsche")}</h2>
         <p>
-          Dein Agent berücksichtigt diese Wünsche bei der Planung. Prüfe die
-          Zutaten bei Allergien immer selbst.
+          {t(
+            "Dein Agent berücksichtigt diese Wünsche bei der Planung. Prüfe die Zutaten bei Allergien immer selbst.",
+          )}
         </p>
         <form
           onSubmit={(event) => {
@@ -2236,36 +2544,39 @@ function Settings({
                   .filter(Boolean),
                 notes: String(form.get("notes")),
               },
-              "Ernährungswünsche gespeichert.",
+              t("Ernährungswünsche gespeichert."),
             );
           }}
         >
-          <Field label="Ernährungsweise">
+          <Field label={t("Ernährungsweise")}>
             <input
               name="diet"
               defaultValue={data.preferences.diet}
-              placeholder="z. B. vegetarisch, flexibel, eiweißreich"
+              placeholder={t("z. B. vegetarisch, flexibel, eiweißreich")}
               maxLength={160}
             />
           </Field>
-          <Field label="Allergien (durch Kommas getrennt)">
+          <Field label={t("Allergien (durch Kommas getrennt)")}>
             <input
               name="allergies"
               defaultValue={data.preferences.allergies.join(", ")}
-              placeholder="z. B. Erdnüsse, Sesam"
+              placeholder={t("z. B. Erdnüsse, Sesam")}
             />
           </Field>
-          <Field label="Notizen">
+          <Field label={t("Notizen")}>
             <textarea
               name="notes"
               rows={3}
               defaultValue={data.preferences.notes}
               maxLength={3000}
-              placeholder="Unter der Woche schnelle Gerichte. Nicht zu scharf."
+              placeholder={t(
+                "Unter der Woche schnelle Gerichte. Nicht zu scharf.",
+              )}
             />
           </Field>
           <button className="secondary" disabled={busy}>
-            <Check size={16} /> Ernährungswünsche speichern
+            <Check size={16} />
+            {t(" Ernährungswünsche speichern")}
           </button>
         </form>
       </section>
@@ -2274,10 +2585,11 @@ function Settings({
           <span className="soft-icon">
             <Users size={24} />
           </span>
-          <h2>Mitglieder</h2>
+          <h2>{t("Mitglieder")}</h2>
           <p>
-            Ein gemeinsamer Haushalt in Stuttgart. Einladungen sind einmal
-            verwendbar und laufen nach 24 Stunden ab.
+            {t(
+              "Ein gemeinsamer Haushalt in Stuttgart. Einladungen sind einmal verwendbar und laufen nach 24 Stunden ab.",
+            )}
           </p>
           {members.data?.members.map((member) => (
             <div className="settings-list-row" key={member.id}>
@@ -2288,10 +2600,10 @@ function Settings({
                 {member.name}
                 <small>
                   {member.role === "owner"
-                    ? "Haushaltsinhaber"
+                    ? t("Haushaltsinhaber")
                     : member.active
-                      ? "Mitglied"
-                      : "Zugang deaktiviert"}
+                      ? t("Mitglied")
+                      : t("Zugang deaktiviert")}
                 </small>
               </span>
               {member.role !== "owner" && (
@@ -2301,12 +2613,15 @@ function Settings({
                   onClick={() =>
                     void doRun(
                       "set_member_active",
-                      { id: member.id, active: !member.active },
-                      "Mitgliederzugang aktualisiert.",
+                      {
+                        id: member.id,
+                        active: !member.active,
+                      },
+                      t("Mitgliederzugang aktualisiert."),
                     )
                   }
                 >
-                  {member.active ? "Deaktivieren" : "Aktivieren"}
+                  {member.active ? t("Deaktivieren") : t("Aktivieren")}
                 </button>
               )}
             </div>
@@ -2316,18 +2631,26 @@ function Settings({
             disabled={busy}
             onClick={async () => {
               const result = (await doRun("create_invitation")) as
-                { url: string } | undefined;
+                | {
+                    url: string;
+                  }
+                | undefined;
               if (result) setInvitation(result.url);
             }}
           >
-            <Plus size={16} /> Person einladen
+            <Plus size={16} />
+            {t(" Person einladen")}
           </button>
           {invitation && (
             <label className="copy-field">
-              <input readOnly aria-label="Einladungslink" value={invitation} />
+              <input
+                readOnly
+                aria-label={t("Einladungslink")}
+                value={invitation}
+              />
               <button
                 className="icon-button"
-                aria-label="Einladung kopieren"
+                aria-label={t("Einladung kopieren")}
                 onClick={() => copy(invitation)}
               >
                 <Copy size={16} />

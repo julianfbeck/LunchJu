@@ -11,13 +11,19 @@ import { DurableOAuthStorage } from "./oauth-storage";
 import { currentUser } from "./auth";
 import { hash, randomToken, boundedBody, cookie, setCookie } from "./security";
 import { HttpError, origin, type Env } from "./types";
+import { languageFromCookie, translate, type Language } from "../i18n";
 
 type Props = { subject: string; scopes: string[]; persistent: boolean };
 type OAuthEnv = Env & { OAUTH_KV: KVNamespace; OAUTH_PROVIDER?: OAuthHelpers };
 const SCOPES = ["mcp:read", "mcp:write", "mcp:admin", "offline_access"];
 const escape = (value: string) =>
   value.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
-function page(body: string, headers?: Headers, status = 200) {
+function page(
+  body: string,
+  headers?: Headers,
+  status = 200,
+  language: Language = "de",
+) {
   const h = new Headers(headers);
   h.set("Content-Type", "text/html;charset=utf-8");
   h.set("Cache-Control", "no-store");
@@ -28,7 +34,7 @@ function page(body: string, headers?: Headers, status = 200) {
     "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   );
   return new Response(
-    `<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LunchJu · Agentenzugang</title><style>
+    `<!doctype html><html lang="${language}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${translate(language, "LunchJu · Agentenzugang")}</title><style>
 :root{color-scheme:light;--ink:#272923;--accent:#ad3e29;--line:#e0e1da}
 *{box-sizing:border-box}body{background:#fff;color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:620px;margin:40px auto;padding:24px}
 .brand{display:block;color:var(--ink);font-weight:750;font-size:23px;letter-spacing:-1px;text-decoration:none;border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:40px}
@@ -40,13 +46,15 @@ button[value=deny]{background:#fff;color:var(--ink);border-color:#cdd0c4}a{color
     { status, headers: h },
   );
 }
-function continueTo(location: string, headers: Headers) {
+function continueTo(location: string, headers: Headers, language: Language) {
   const target = new URL(location);
   const h = new Headers(headers);
   h.delete("Location");
   return page(
-    `<meta http-equiv="refresh" content="0;url=${escape(location)}"><h1>Verbindung hergestellt.</h1><p>Zurück zu ${escape(target.host || target.protocol)}.</p><a href="${escape(location)}">Weiter zu deinem Agenten</a>`,
+    `<meta http-equiv="refresh" content="0;url=${escape(location)}"><h1>${translate(language, "Verbindung hergestellt.")}</h1><p>${escape(translate(language, "Zurück zu {0}.", target.host || target.protocol))}</p><a href="${escape(location)}">${translate(language, "Weiter zu deinem Agenten")}</a>`,
     h,
+    200,
+    language,
   );
 }
 export function isOAuthPath(path: string) {
@@ -156,12 +164,17 @@ export class LunchJuOAuth extends DurableObject<Env> {
     return this.queue(() => this.storageAdapter.purgeExpired());
   }
   private async consentOrGrants(request: Request): Promise<Response> {
+    const language = languageFromCookie(request.headers.get("Cookie"));
+    const t = (message: string, ...values: string[]) =>
+      escape(translate(language, message, ...values));
+    const render = (body: string, headers?: Headers, status = 200) =>
+      page(body, headers, status, language);
     const user = await currentUser(this.env, request),
       url = new URL(request.url),
       issuer = origin(this.env);
     if (!user)
-      return page(
-        `<h1>Agenten verbinden</h1><p>Melde dich mit deinem LunchJu-Passkey an und gib anschließend diesen Agenten frei.</p><a class="button" href="/?next=${encodeURIComponent(url.pathname + url.search)}">Mit Passkey anmelden</a>`,
+      return render(
+        `<h1>${t("Agenten verbinden")}</h1><p>${t("Melde dich mit deinem LunchJu-Passkey an und gib anschließend diesen Agenten frei.")}</p><a class="button" href="/?next=${encodeURIComponent(url.pathname + url.search)}">${t("Mit Passkey anmelden")}</a>`,
         undefined,
         401,
       );
@@ -203,15 +216,15 @@ export class LunchJuOAuth extends DurableObject<Env> {
           JSON.stringify({ subject: user.id }),
           { expirationTtl: 600 },
         );
-        return page(
-          `<h1>${escape(details.clientName)} verbinden</h1><p>Angemeldet als ${escape(user.name)}. Dieser Agent erhält Zugriff auf den Haushalt Stuttgart einschließlich Essensverlauf und Ernährungswünschen.</p><p><small>Rückkehr zu ${escape(details.redirectHost)}. Der Name des Agenten wird von seiner Anwendung angegeben.</small></p><form method="post"><input type="hidden" name="handle" value="${escape(consent.handle)}"><label><input type="checkbox" name="scope" value="mcp:read" checked> Rezepte, Vorräte, Mahlzeiten und Einkaufsliste lesen</label><label><input type="checkbox" name="scope" value="mcp:write" checked> Rezepte und Bilder bearbeiten, Mahlzeiten planen und Bring abgleichen</label><label><input type="checkbox" name="scope" value="mcp:admin"> Einträge und Bilder löschen und erlaubte Einstellungen verwalten</label><label><input type="checkbox" name="persistent" value="yes"> Verbunden bleiben, bis ich den Zugriff widerrufe</label><small>Zugangstokens gelten 15 Minuten. Für dauerhaften Zugriff ist das letzte Kontrollkästchen erforderlich.</small><p><button name="decision" value="approve">Agenten verbinden</button><button name="decision" value="deny">Abbrechen</button></p></form>`,
+        return render(
+          `<h1>${t("{0} verbinden", details.clientName)}</h1><p>${t("Angemeldet als {0}. Dieser Agent erhält Zugriff auf den Haushalt Stuttgart einschließlich Essensverlauf und Ernährungswünschen.", user.name)}</p><p><small>${t("Rückkehr zu {0}. Der Name des Agenten wird von seiner Anwendung angegeben.", details.redirectHost)}</small></p><form method="post"><input type="hidden" name="handle" value="${escape(consent.handle)}"><label><input type="checkbox" name="scope" value="mcp:read" checked> ${t("Rezepte, Vorräte, Mahlzeiten und Einkaufsliste lesen")}</label><label><input type="checkbox" name="scope" value="mcp:write" checked> ${t("Rezepte und Bilder bearbeiten, Mahlzeiten planen und Bring abgleichen")}</label><label><input type="checkbox" name="scope" value="mcp:admin"> ${t("Einträge und Bilder löschen und erlaubte Einstellungen verwalten")}</label><label><input type="checkbox" name="persistent" value="yes"> ${t("Verbunden bleiben, bis ich den Zugriff widerrufe")}</label><small>${t("Zugangstokens gelten 15 Minuten. Für dauerhaften Zugriff ist das letzte Kontrollkästchen erforderlich.")}</small><p><button name="decision" value="approve">${t("Agenten verbinden")}</button><button name="decision" value="deny">${t("Abbrechen")}</button></p></form>`,
           consent.headers,
         );
       } catch (error) {
         if (error instanceof AuthorizationError && error.redirectTo)
           return Response.redirect(error.redirectTo, 302);
-        return page(
-          "<h1>Die Verbindung konnte nicht gestartet werden.</h1><p>Starte die Verbindung erneut über deinen Agenten und prüfe seine Rücksprungadresse und Berechtigungen.</p>",
+        return render(
+          `<h1>${t("Die Verbindung konnte nicht gestartet werden.")}</h1><p>${t("Starte die Verbindung erneut über deinen Agenten und prüfe seine Rücksprungadresse und Berechtigungen.")}</p>`,
           undefined,
           400,
         );
@@ -240,7 +253,7 @@ export class LunchJuOAuth extends DurableObject<Env> {
       if (form.get("decision") === "deny") {
         const denied = await oauth.denyConsent(request, handle);
         await this.oauthEnv.OAUTH_KV.delete(key);
-        return continueTo(denied.redirectTo, denied.headers);
+        return continueTo(denied.redirectTo, denied.headers, language);
       }
       if (form.get("decision") !== "approve")
         throw new HttpError(400, "Ungültige Freigabe.");
@@ -266,16 +279,18 @@ export class LunchJuOAuth extends DurableObject<Env> {
         metadata: { clientName: details.clientName },
         props: { subject: user.id, scopes, persistent } satisfies Props,
       });
-      return continueTo(result.redirectTo, approved.headers);
+      return continueTo(result.redirectTo, approved.headers, language);
     } catch {
-      return page(
-        "<h1>Diese Verbindungsanfrage ist abgelaufen.</h1><p>Starte die Verbindung erneut über deinen Agenten.</p>",
+      return render(
+        `<h1>${t("Diese Verbindungsanfrage ist abgelaufen.")}</h1><p>${t("Starte die Verbindung erneut über deinen Agenten.")}</p>`,
         undefined,
         400,
       );
     }
   }
   private async grants(request: Request, subject: string, oauth: OAuthHelpers) {
+    const language = languageFromCookie(request.headers.get("Cookie"));
+    const t = (message: string) => escape(translate(language, message));
     if (request.method === "GET") {
       const grants = [];
       let cursor: string | undefined;
@@ -295,10 +310,12 @@ export class LunchJuOAuth extends DurableObject<Env> {
         { expirationTtl: 600 },
       );
       return page(
-        `<h1>Verbundene Agenten</h1><a href="/">Zurück zu LunchJu</a>${grants.map((grant) => `<section><h2>${escape(String(grant.metadata?.clientName ?? grant.clientId))}</h2><p>${escape(grant.scope.join(" · "))}</p><form method="post"><input type="hidden" name="csrf" value="${token}"><input type="hidden" name="id" value="${escape(grant.id)}"><button>Zugriff widerrufen</button></form></section>`).join("") || "<p>Noch keine Agenten verbunden.</p>"}`,
+        `<h1>${t("Verbundene Agenten")}</h1><a href="/">${t("Zurück zu LunchJu")}</a>${grants.map((grant) => `<section><h2>${escape(String(grant.metadata?.clientName ?? grant.clientId))}</h2><p>${escape(grant.scope.join(" · "))}</p><form method="post"><input type="hidden" name="csrf" value="${token}"><input type="hidden" name="id" value="${escape(grant.id)}"><button>${t("Zugriff widerrufen")}</button></form></section>`).join("") || `<p>${t("Noch keine Agenten verbunden.")}</p>`}`,
         new Headers({
           "Set-Cookie": setCookie(this.env, "lunchju_grants", hashed, 600),
         }),
+        200,
+        language,
       );
     }
     if (

@@ -1,5 +1,6 @@
 import handler from "@tanstack/react-start/server-entry";
-import { ZodError } from "zod";
+import { ZodError, z } from "zod";
+import { languageFromCookie, translate } from "./i18n";
 import { authRoute, requireUser } from "./server/auth";
 import { runOperation } from "./server/operations";
 import { handleMcp } from "./server/mcp";
@@ -133,24 +134,30 @@ export default {
       headers.set("X-Frame-Options", "DENY");
       if (new URL(request.url).pathname.startsWith("/api/"))
         headers.set("Cache-Control", "no-store");
+      if (headers.get("Content-Type")?.includes("text/html"))
+        headers.set("Cache-Control", "private, no-store");
       return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
         headers,
       });
     } catch (error) {
+      const language = languageFromCookie(request.headers.get("Cookie"));
       if (error instanceof ZodError)
         return Response.json(
           {
             error: error.issues
-              .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+              .map(
+                (issue) =>
+                  `${issue.path.join(".")}: ${language === "en" ? z.locales.en().localeError({ ...issue, input: undefined }) : issue.message}`,
+              )
               .join("; "),
           },
           { status: 400, headers: { "Cache-Control": "no-store" } },
         );
       if (error instanceof HttpError)
         return Response.json(
-          { error: error.message },
+          { error: translate(language, error.message) },
           { status: error.status, headers: { "Cache-Control": "no-store" } },
         );
       console.error(
@@ -162,7 +169,12 @@ export default {
           : "UnknownError",
       );
       return Response.json(
-        { error: "Ein Fehler ist aufgetreten. Bitte versuche es erneut." },
+        {
+          error: translate(
+            language,
+            "Ein Fehler ist aufgetreten. Bitte versuche es erneut.",
+          ),
+        },
         { status: 500, headers: { "Cache-Control": "no-store" } },
       );
     }

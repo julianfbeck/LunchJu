@@ -5,19 +5,25 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import style from "../styles.css?url";
+import { LanguageProvider, useI18n } from "../ui/language";
+import { getLanguage } from "../ui/language-server";
+import { translate } from "../i18n";
 export const Route = createRootRoute({
-  head: () => ({
+  loader: () => getLanguage(),
+  head: ({ loaderData }) => ({
     meta: [
       { charSet: "utf-8" },
       {
         name: "viewport",
         content: "width=device-width,initial-scale=1,viewport-fit=cover",
       },
-      { title: "LunchJu · Küchenbuch" },
+      { title: translate(loaderData ?? "de", "LunchJu · Küchenbuch") },
       {
         name: "description",
-        content:
+        content: translate(
+          loaderData ?? "de",
           "Rezepte, Vorräte, Wochenplan und Einkaufsliste für deinen Haushalt in Stuttgart und deinen Agenten.",
+        ),
       },
       { name: "theme-color", content: "#ffffff" },
     ],
@@ -26,8 +32,21 @@ export const Route = createRootRoute({
       { rel: "icon", href: "/icon.svg", type: "image/svg+xml" },
     ],
   }),
-  component: () => (
-    <html lang="de">
+  component: Root,
+  notFoundComponent: NotFound,
+});
+function Root() {
+  const language = Route.useLoaderData();
+  return (
+    <LanguageProvider initialLanguage={language ?? "de"}>
+      <Document />
+    </LanguageProvider>
+  );
+}
+function Document() {
+  const { language } = useI18n();
+  return (
+    <html lang={language}>
       <head>
         <HeadContent />
       </head>
@@ -36,11 +55,14 @@ export const Route = createRootRoute({
         <Scripts />
       </body>
     </html>
-  ),
-  notFoundComponent: () => (
+  );
+}
+function NotFound() {
+  const { t } = useI18n();
+  return (
     <main className="auth-page">
-      <h1>Seite nicht gefunden</h1>
-      <a href="/">Zurück zu LunchJu</a>
+      <h1>{t("Seite nicht gefunden")}</h1>
+      <a href="/">{t("Zurück zu LunchJu")}</a>
     </main>
-  ),
-});
+  );
+}

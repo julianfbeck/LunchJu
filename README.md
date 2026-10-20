@@ -1,12 +1,13 @@
 # LunchJu
 
-A shared kitchen built for people and their agents. Plan meals, keep recipes, track pantry stock and food history, and manage groceries from a mobile-first website or an authenticated MCP client. The application and agent instructions are German, with one shared home: Stuttgart.
+A shared kitchen built for people and their agents. Plan meals, keep recipes, track pantry stock and food history, and manage groceries from a mobile-first website or an authenticated MCP client. Choose German or English for the interface, with one shared home: Stuttgart.
 
 Live app: [lunchju.juli.sh](https://lunchju.juli.sh)
 
 ## What it does
 
 - One home with multiple invited members. Everyone signs in with a passkey; there are no password accounts.
+- German/English selection on the sign-in screen, mobile header, desktop sidebar and in Settings. The choice is stored in a first-party cookie for a year and used for server rendering, dates, quantities and OAuth consent. Each browser chooses independently. Existing recipe text, notes, enum values and Bring's German list language stay unchanged. Agents follow the user's requested language, defaulting to German.
 - Recipe creation, editing, favorites, private images with list previews and pantry availability checks. Person controls scale ingredients directly in the list and carry the selected count into meal planning.
 - Dated meal planning and an editable record of meals eaten. Ingredients are snapshotted so deleting a recipe preserves food history.
 - Pantry lots with quantities, units, fridge/freezer/pantry storage and best-before dates.
@@ -149,7 +150,7 @@ npm run typecheck
 npm run build
 ```
 
-Tests run the production SQL against SQLite and exercise signed WebAuthn registration/login, challenge replay protection, invitation claims, session revocation, permission checks, meal snapshots, quantity allocation, grocery generation, encrypted Bring tokens, German article mapping and restrictions to Stuttgart. Scaling tests cover fixed amounts, rounding, stock checks, meal and shopping consistency, older clients, stale references and rescaling after recipe deletion. Image tests cover authenticated multipart uploads, file validation, replacement, removal, storage failures and concurrent updates. MCP tests include image-sized payloads and authentication before body processing. OAuth tests cover PKCE consent, code exchange/reuse, persistent refresh across object restart, CSRF and revocation.
+Tests run the production SQL against SQLite and exercise signed WebAuthn registration/login, challenge replay protection, invitation claims, session revocation, permission checks, meal snapshots, quantity allocation, grocery generation, encrypted Bring tokens, German article mapping and restrictions to Stuttgart. Scaling tests cover fixed amounts, rounding, stock checks, meal and shopping consistency, older clients, stale references and rescaling after recipe deletion. Image tests cover authenticated multipart uploads, file validation, replacement, removal, storage failures and concurrent updates. MCP tests include image-sized payloads and authentication before body processing. OAuth tests cover PKCE consent, code exchange/reuse, persistent refresh across object restart, CSRF, revocation and English consent. Language tests cover saved choices, German/English rendering and formatting, and preservation of stored recipe content.
 
 Physical-device passkey UX and a real Bring account connection require a user's browser and account. Protocol tests do not substitute for those final checks.
 

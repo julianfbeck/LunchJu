@@ -1,3 +1,4 @@
+import { useI18n } from "./language";
 import { useId, useState } from "react";
 import {
   BookOpen,
@@ -12,14 +13,12 @@ import {
 import type { Recipe } from "../shared";
 import { scaleIngredients } from "../scaling";
 import { formatNumber, formatQuantity } from "../locale";
-
 export function personCount(value: string) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0.1 && number <= 100
     ? number
     : null;
 }
-
 export function ServingsControl({
   value,
   onChange,
@@ -29,17 +28,19 @@ export function ServingsControl({
   onChange: (value: string) => void;
   baseServings: number;
 }) {
+  const { t } = useI18n();
   const inputId = useId();
   const count = personCount(value);
   return (
     <div className="servings-control">
       <label htmlFor={inputId}>
-        <Users size={15} /> Personen
+        <Users size={15} />
+        {t(" Personen")}
       </label>
       <div className="servings-stepper">
         <button
           type="button"
-          aria-label="Eine Person weniger"
+          aria-label={t("Eine Person weniger")}
           disabled={count !== null && count <= 0.1}
           onClick={() =>
             onChange(String(Math.max(0.1, (count ?? baseServings) - 1)))
@@ -63,7 +64,7 @@ export function ServingsControl({
         />
         <button
           type="button"
-          aria-label="Eine Person mehr"
+          aria-label={t("Eine Person mehr")}
           disabled={count !== null && count >= 100}
           onClick={() =>
             onChange(String(Math.min(100, (count ?? baseServings) + 1)))
@@ -75,7 +76,6 @@ export function ServingsControl({
     </div>
   );
 }
-
 export function RecipeList({
   recipes,
   busy,
@@ -107,7 +107,6 @@ export function RecipeList({
     </div>
   );
 }
-
 function RecipeRow({
   recipe,
   busy,
@@ -123,6 +122,7 @@ function RecipeRow({
   onEdit: (recipe: Recipe) => void;
   onFavorite: (recipe: Recipe) => void;
 }) {
+  const { t, language } = useI18n();
   const [people, setPeople] = useState(String(recipe.servings));
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const servings = personCount(people);
@@ -134,7 +134,7 @@ function RecipeRow({
       <button
         className="recipe-thumbnail"
         onClick={open}
-        aria-label={`Rezept öffnen: ${recipe.name}`}
+        aria-label={t("Rezept öffnen: {0}", recipe.name)}
       >
         {recipe.imageUrl && failedImage !== recipe.imageUrl ? (
           <img
@@ -148,7 +148,7 @@ function RecipeRow({
         ) : (
           <span className="recipe-no-image">
             <BookOpen size={26} />
-            <span>Kein Bild</span>
+            <span>{t("Kein Bild")}</span>
           </span>
         )}
       </button>
@@ -156,7 +156,7 @@ function RecipeRow({
         className={`favorite ${recipe.favorite ? "is-favorite" : ""}`}
         disabled={busy}
         aria-label={
-          recipe.favorite ? "Favorit entfernen" : "Als Favorit markieren"
+          recipe.favorite ? t("Favorit entfernen") : t("Als Favorit markieren")
         }
         aria-pressed={recipe.favorite}
         onClick={() => onFavorite(recipe)}
@@ -178,12 +178,17 @@ function RecipeRow({
         <div className="recipe-meta">
           <span>
             <Clock size={14} />
-            {formatNumber(recipe.minutes)} Min.
+            {formatNumber(recipe.minutes, language)}
+            {t(" Min.")}
           </span>
-          <span>Grundrezept: {formatNumber(recipe.servings)} Portionen</span>
+          <span>
+            {t("Grundrezept: ")}
+            {formatNumber(recipe.servings, language)}
+            {t(" Portionen")}
+          </span>
           <button
             className="icon-button"
-            aria-label={`Bearbeiten: ${recipe.name}`}
+            aria-label={t("Bearbeiten: {0}", recipe.name)}
             onClick={() => onEdit(recipe)}
           >
             <Pencil size={15} />
@@ -201,7 +206,8 @@ function RecipeRow({
           disabled={servings === null}
           onClick={() => onPlan(recipe, servings!)}
         >
-          <CalendarDays size={16} /> Planen
+          <CalendarDays size={16} />
+          {t(" Planen")}
         </button>
       </div>
       <div
@@ -210,7 +216,7 @@ function RecipeRow({
         aria-atomic="true"
       >
         {servings === null ? (
-          <p>Wähle eine Personenzahl zwischen 0,1 und 100.</p>
+          <p>{t("Wähle eine Personenzahl zwischen 0,1 und 100.")}</p>
         ) : (
           <>
             <p>
@@ -218,13 +224,16 @@ function RecipeRow({
                 .slice(0, 3)
                 .map(
                   (item) =>
-                    `${formatQuantity(item.quantity, item.unit)} ${item.name}`,
+                    `${formatQuantity(item.quantity, item.unit, language)} ${item.name}`,
                 )
                 .join(" · ")}
               {ingredients.length > 3 ? " · …" : ""}
             </p>
             <button className="text-button" onClick={open}>
-              Alle Zutaten für {formatNumber(servings)} Personen
+              {t(
+                "Alle Zutaten für {0} Personen",
+                formatNumber(servings, language),
+              )}
             </button>
           </>
         )}
