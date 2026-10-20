@@ -30,6 +30,12 @@ export function fixture() {
       "utf8",
     ),
   );
+  sqlite.exec(
+    readFileSync(
+      new URL("../../migrations/0005_recipe_collections.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   class Statement {
     values: unknown[] = [];
     constructor(public sql: string) {}

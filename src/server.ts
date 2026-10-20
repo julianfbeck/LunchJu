@@ -58,10 +58,16 @@ export async function routeRequest(
       scopes: ["mcp:read", "mcp:write", "mcp:admin"],
       agent: false,
     };
-    const imageRoute = url.pathname.match(/^\/api\/recipes\/([^/]+)\/image$/);
+    const imageRoute = url.pathname.match(
+      /^\/api\/recipes\/([^/]+)\/(?:image|images\/([^/]+))$/,
+    );
     if (imageRoute) {
       if (request.method === "GET") {
-        const { image } = await getRecipeImage(env, imageRoute[1]);
+        const { image } = await getRecipeImage(
+          env,
+          imageRoute[1],
+          imageRoute[2],
+        );
         return new Response(image.body, {
           headers: {
             "Content-Type": image.httpMetadata?.contentType ?? "image/jpeg",
@@ -101,6 +107,7 @@ export async function routeRequest(
         new Uint8Array(await file.arrayBuffer()),
         file.type,
         altText.trim(),
+        { append: form.get("append") === "true", imageId: imageRoute[2] },
       );
       await audit(env, access, "upload_recipe_image", imageRoute[1]).catch(() =>
         console.error("Protokollierung fehlgeschlagen."),

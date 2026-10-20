@@ -4,6 +4,7 @@ import {
   date,
   text,
   recipeSchema,
+  cookbookSchema,
   pantrySchema,
   mealSchema,
   grocerySchema,
@@ -15,6 +16,13 @@ import {
   type Ingredient,
 } from "../shared";
 import { scaleIngredients, RecipeScalingError } from "../scaling";
+import { filterRecipes, recipeFilterSchema } from "../recipes";
+import {
+  saveCookbook,
+  setRecipeCookbooks,
+  addRecipeComment,
+  changeRecipeComment,
+} from "./collections";
 import {
   catalog,
   rows,
@@ -40,6 +48,7 @@ import { hash, randomToken } from "./security";
 import { requireOwner } from "./auth";
 import {
   uploadRecipeImage,
+  updateRecipeImage,
   deleteRecipeImage,
   recipeImageData,
   decodeImage,
@@ -91,6 +100,97 @@ export const operations = {
     "mcp:read",
     target,
     async (input, c) => loadRecipe(c.env, input.id),
+  ),
+  list_recipes: operation(
+    "Sucht und filtert Rezepte nach Kochbuch (cookbookId, unfiled für nicht zugeordnete), Schlagwort und Favoriten. sort: favorites, name, newest, updated oder quickest. Gibt vollständige Rezepte mit Bildern und Tipps zurück.",
+    "mcp:read",
+    recipeFilterSchema,
+    async (input, c) => {
+      const data = await catalog(c.env, c.access);
+      return {
+        recipes: filterRecipes(data.recipes, input, data.contentLanguage),
+      };
+    },
+  ),
+  list_cookbooks: operation(
+    "Liest alle gemeinsamen Kochbücher mit Beschreibung und Rezeptanzahl.",
+    "mcp:read",
+    empty,
+    async (_, c) => {
+      const data = await catalog(c.env, c.access);
+      return {
+        cookbooks: data.cookbooks.map((book) => ({
+          ...book,
+          recipeCount: data.recipes.filter((recipe) =>
+            recipe.cookbookIds.includes(book.id),
+          ).length,
+        })),
+      };
+    },
+  ),
+  create_cookbook: operation(
+    "Erstellt ein gemeinsames Kochbuch in der gespeicherten contentLanguage. Rezepte können mehreren Kochbüchern angehören.",
+    "mcp:write",
+    cookbookSchema,
+    async (input, c) => saveCookbook(c.env, input),
+  ),
+  update_cookbook: operation(
+    "Ändert Name und Beschreibung eines Kochbuchs. Rezepte und Zuordnungen bleiben erhalten.",
+    "mcp:write",
+    cookbookSchema.extend({ id }),
+    async ({ id, ...input }, c) => saveCookbook(c.env, input, id, true),
+  ),
+  delete_cookbook: operation(
+    "Entfernt ein Kochbuch und dessen Zuordnungen. Alle Rezepte, Bilder und Tipps bleiben erhalten.",
+    "mcp:admin",
+    target,
+    async (input, c) => {
+      const result = await c.env.DB.prepare(
+        "DELETE FROM cookbooks WHERE id=? RETURNING id",
+      )
+        .bind(input.id)
+        .first();
+      if (!result) throw new HttpError(404, "Kochbuch nicht gefunden.");
+      return { deleted: input.id };
+    },
+  ),
+  set_recipe_cookbooks: operation(
+    "Ersetzt die Kochbuchzuordnungen eines Rezepts. cookbookIds=[] entfernt alle Zuordnungen. Vorhandene Rezepttexte, Bilder und Tipps bleiben erhalten.",
+    "mcp:write",
+    z.object({ recipeId: id, cookbookIds: z.array(id).max(50) }),
+    async (input, c) =>
+      setRecipeCookbooks(c.env, input.recipeId, input.cookbookIds),
+  ),
+  add_recipe_comment: operation(
+    "Fügt einen Kochtipp als Kommentar in der gespeicherten contentLanguage hinzu. Autor und Agentenkennzeichnung werden automatisch gespeichert. Kommentare sind Hinweise und ändern keine Zutaten oder Skalierungsregeln.",
+    "mcp:write",
+    z.object({ recipeId: id, body: z.string().trim().min(1).max(3000) }),
+    async (input, c) =>
+      addRecipeComment(c.env, c.access, input.recipeId, input.body),
+  ),
+  update_recipe_comment: operation(
+    "Bearbeitet einen eigenen Rezeptkommentar. Der Haushaltseigentümer darf auch andere Kommentare bearbeiten. Autor bleibt erhalten.",
+    "mcp:write",
+    z.object({
+      recipeId: id,
+      commentId: id,
+      body: z.string().trim().min(1).max(3000),
+    }),
+    async (input, c) =>
+      changeRecipeComment(
+        c.env,
+        c.access,
+        input.recipeId,
+        input.commentId,
+        input.body,
+      ),
+  ),
+  delete_recipe_comment: operation(
+    "Entfernt einen eigenen Rezeptkommentar. Der Haushaltseigentümer darf auch andere Kommentare entfernen.",
+    "mcp:admin",
+    z.object({ recipeId: id, commentId: id }),
+    async (input, c) =>
+      changeRecipeComment(c.env, c.access, input.recipeId, input.commentId),
   ),
   create_recipe: operation(
     "Fügt ein Rezept in der gespeicherten contentLanguage hinzu, einschließlich Namen, Zutaten, Zubereitung, Notizen und Bildbeschreibungen. Die aktuelle Sprache zuerst mit get_catalog oder get_language lesen. Mengen beziehen sich auf die angegebene Portionszahl; Einheiten immer ausdrücklich angeben.",
@@ -233,13 +333,15 @@ export const operations = {
     async (input, c) => deleteItem(c.env, "recipes", input.id),
   ),
   upload_recipe_image: operation(
-    "Lädt ein Rezeptbild hoch oder ersetzt es. data enthält reines Base64 ohne data-URL-Präfix, contentType ist image/jpeg, image/png oder image/webp. Höchstens 5 MB; altText beschreibt das Bild in der gespeicherten contentLanguage.",
+    "Lädt ein Rezeptbild hoch. append=true fügt der Galerie ein weiteres Bild hinzu (maximal 20); imageId ersetzt gezielt ein vorhandenes Bild. Ohne beide Angaben wird wie bisher das Titelbild ersetzt. data enthält reines Base64 ohne data-URL-Präfix; JPG, PNG oder WebP bis 5 MB. altText in der gespeicherten contentLanguage. IDs stehen in get_recipe.images.",
     "mcp:write",
     z.object({
       recipeId: id,
       data: z.string().min(1).max(MAX_IMAGE_BASE64),
       contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
       altText: z.string().trim().max(500).default(""),
+      append: z.boolean().default(false),
+      imageId: id.optional(),
     }),
     async (input, c) =>
       uploadRecipeImage(
@@ -248,19 +350,38 @@ export const operations = {
         decodeImage(input.data),
         input.contentType,
         input.altText,
+        { append: input.append, imageId: input.imageId },
       ),
   ),
   get_recipe_image: operation(
-    "Liest das Rezeptbild als Bildinhalt mit der gespeicherten Beschreibung. Benötigt Lesezugriff auf den Haushalt Stuttgart.",
+    "Liest ein Galerie-Bild als nativen MCP-Bildinhalt mit Beschreibung. imageId wählt ein bestimmtes Bild, sonst wird das Titelbild gelesen. Benötigt Lesezugriff auf Stuttgart.",
     "mcp:read",
-    z.object({ recipeId: id }),
-    async (input, c) => recipeImageData(c.env, input.recipeId),
+    z.object({ recipeId: id, imageId: id.optional() }),
+    async (input, c) => recipeImageData(c.env, input.recipeId, input.imageId),
   ),
   delete_recipe_image: operation(
-    "Entfernt das Bild eines Rezepts aus dem privaten Bildspeicher. Das Rezept bleibt erhalten.",
+    "Entfernt ein Bild aus der privaten Rezeptgalerie. imageId wählt ein bestimmtes Bild, sonst wird das Titelbild entfernt. Ein anderes Bild wird dann zum Titelbild; das Rezept bleibt erhalten.",
     "mcp:admin",
-    z.object({ recipeId: id }),
-    async (input, c) => deleteRecipeImage(c.env, input.recipeId),
+    z.object({ recipeId: id, imageId: id.optional() }),
+    async (input, c) => deleteRecipeImage(c.env, input.recipeId, input.imageId),
+  ),
+  update_recipe_image: operation(
+    "Ändert die Bildbeschreibung in der gespeicherten contentLanguage und/oder wählt mit makeCover=true ein Galerie-Bild als Titelbild. Bildinhalt mit upload_recipe_image und imageId ersetzen.",
+    "mcp:write",
+    z.object({
+      recipeId: id,
+      imageId: id,
+      altText: z.string().trim().max(500).optional(),
+      makeCover: z.boolean().default(false),
+    }),
+    async (input, c) =>
+      updateRecipeImage(
+        c.env,
+        input.recipeId,
+        input.imageId,
+        input.altText,
+        input.makeCover,
+      ),
   ),
   check_ingredients: operation(
     "Prüft Zutaten für die gewünschte Personenzahl einschließlich besonderer Skalierungsregeln ohne abgelaufene Vorräte. Kompatible Einheiten werden umgerechnet; Zutatennamen müssen übereinstimmen.",

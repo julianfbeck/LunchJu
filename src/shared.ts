@@ -56,7 +56,33 @@ export const recipeSchema = z.object({
     ])
     .default(""),
   favorite: z.boolean().default(false),
+  cookbookIds: z.array(id).max(50).optional(),
 });
+export const cookbookSchema = z.object({
+  name: text,
+  description: z.string().trim().max(2000).default(""),
+});
+export type Cookbook = z.infer<typeof cookbookSchema> & {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type RecipeImage = {
+  id: string;
+  url: string;
+  altText: string;
+  createdAt: string;
+};
+export type RecipeComment = {
+  id: string;
+  recipeId: string;
+  authorId: string;
+  authorName: string;
+  agent: boolean;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+};
 export const pantrySchema = z.object({
   name: text,
   quantity: z.number().finite().min(0).max(100000),
@@ -89,6 +115,9 @@ export type Recipe = z.infer<typeof recipeSchema> & {
   id: string;
   imageUrl: string | null;
   imageAlt: string;
+  images: RecipeImage[];
+  cookbookIds: string[];
+  comments: RecipeComment[];
   createdAt: string;
   updatedAt: string;
 };
@@ -118,6 +147,7 @@ export type User = {
 };
 export type Catalog = {
   recipes: Recipe[];
+  cookbooks: Cookbook[];
   pantry: PantryItem[];
   meals: Meal[];
   groceries: Grocery[];

@@ -30,10 +30,18 @@ import {
   Copy,
   Leaf,
   Utensils,
-  ImagePlus,
 } from "lucide-react";
 import { scaleIngredients } from "../scaling";
 import { RecipeList, ServingsControl, personCount } from "./recipe-list";
+import { filterRecipes, recipeFilterSchema } from "../recipes";
+import {
+  CookbookManager,
+  CookbookPicker,
+  RecipeFiltersBar,
+  RecipeGallery,
+  RecipeCookbooks,
+  RecipeComments,
+} from "./recipe-extras";
 import type {
   Catalog,
   Recipe,
@@ -451,7 +459,7 @@ function KitchenContent({
   const [editor, setEditor] = useState<Editor | null>(null),
     [detail, setDetail] = useState<Recipe | null>(null),
     [detailServings, setDetailServings] = useState(2),
-    [search, setSearch] = useState(""),
+    [recipeFilters, setRecipeFilters] = useState(recipeFilterSchema.parse({})),
     [day, setDay] = useState(today()),
     [location, setLocation] = useState("All"),
     [showChecked, setShowChecked] = useState(false);
@@ -870,8 +878,14 @@ function KitchenContent({
               <input
                 aria-label={t("Rezepte durchsuchen")}
                 placeholder={t("Rezepte oder Zutaten suchen")}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                value={recipeFilters.search}
+                maxLength={200}
+                onChange={(event) =>
+                  setRecipeFilters({
+                    ...recipeFilters,
+                    search: event.target.value,
+                  })
+                }
               />
             </label>
             <span className="muted">
@@ -879,12 +893,32 @@ function KitchenContent({
               {t(" Rezepte")}
             </span>
           </div>
+          <RecipeFiltersBar
+            filters={recipeFilters}
+            setFilters={setRecipeFilters}
+            cookbooks={data.cookbooks}
+            recipes={data.recipes}
+            count={filterRecipes(data.recipes, recipeFilters, language).length}
+          />
+          <CookbookManager
+            cookbooks={data.cookbooks}
+            recipes={data.recipes}
+            onChanged={async () => {
+              await client.invalidateQueries({ queryKey: ["catalog"] });
+              const books =
+                client.getQueryData<Data>(["catalog"])?.cookbooks ?? [];
+              setRecipeFilters((current) =>
+                current.cookbookId &&
+                current.cookbookId !== "unfiled" &&
+                !books.some((book) => book.id === current.cookbookId)
+                  ? { ...current, cookbookId: "" }
+                  : current,
+              );
+            }}
+          />
           <RecipeList
-            recipes={data.recipes.filter((recipe) =>
-              `${recipe.name} ${recipe.tags.join(" ")} ${recipe.ingredients.map((i) => i.name).join(" ")}`
-                .toLocaleLowerCase("de")
-                .includes(search.toLocaleLowerCase("de")),
-            )}
+            recipes={filterRecipes(data.recipes, recipeFilters, language)}
+            cookbooks={data.cookbooks}
             busy={mutation.isPending}
             onOpen={(recipe, servings) => {
               setDetailServings(servings);
@@ -910,6 +944,18 @@ function KitchenContent({
               })
             }
           />
+          {!!data.recipes.length &&
+            !filterRecipes(data.recipes, recipeFilters, language).length && (
+              <div className="no-recipes">
+                <p>{t("Keine Rezepte für diese Auswahl.")}</p>
+                <button
+                  className="text-button"
+                  onClick={() => setRecipeFilters(recipeFilterSchema.parse({}))}
+                >
+                  {t("Filter zurücksetzen")}
+                </button>
+              </div>
+            )}
           {!data.recipes.length && (
             <Empty
               icon={<BookOpen size={30} />}
@@ -1214,22 +1260,38 @@ function KitchenContent({
       {detail && (
         <RecipeDetail
           key={detail.id}
-          recipe={detail}
+          recipe={
+            data.recipes.find((recipe) => recipe.id === detail.id) ?? detail
+          }
+          cookbooks={data.cookbooks}
+          user={data.user}
           initialServings={detailServings}
-          onImageSaved={(recipe) => {
+          onSaved={(recipe) => {
+            client.setQueryData<Data>(["catalog"], (current) =>
+              current
+                ? {
+                    ...current,
+                    recipes: current.recipes.map((item) =>
+                      item.id === recipe.id ? recipe : item,
+                    ),
+                  }
+                : current,
+            );
             setDetail((current) =>
               current?.id === recipe.id ? recipe : current,
             );
             void client.invalidateQueries({
               queryKey: ["catalog"],
             });
-            notify(t("Rezeptbild gespeichert."));
+            notify(t("Rezept gespeichert."));
           }}
           onClose={() => setDetail(null)}
           onPlan={(servings) => {
             setEditor({
               type: "meal",
-              recipe: detail,
+              recipe:
+                data.recipes.find((recipe) => recipe.id === detail.id) ??
+                detail,
               servings,
             });
             setDetail(null);
@@ -1237,7 +1299,9 @@ function KitchenContent({
           onEdit={() => {
             setEditor({
               type: "recipe",
-              value: detail,
+              value:
+                data.recipes.find((recipe) => recipe.id === detail.id) ??
+                detail,
             });
             setDetail(null);
           }}
@@ -1379,6 +1443,9 @@ function EditorForm({
           ])
         : [],
     ),
+    [cookbookIds, setCookbookIds] = useState<string[]>(
+      (value as Recipe)?.cookbookIds ?? [],
+    ),
     [error, setError] = useState("");
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1399,6 +1466,7 @@ function EditorForm({
           .map((value) => value.trim())
           .filter(Boolean),
         favorite: (value as Recipe)?.favorite ?? false,
+        cookbookIds,
         instructions: str("instructions")
           .split("\n")
           .map((value) => value.trim())
@@ -1486,6 +1554,11 @@ function EditorForm({
       )}
       {editor.type === "recipe" && (
         <>
+          <CookbookPicker
+            cookbooks={data.cookbooks}
+            selected={cookbookIds}
+            onChange={setCookbookIds}
+          />
           <Field label={t("Beschreibung")}>
             <textarea
               name="description"
@@ -1938,14 +2011,18 @@ function EditorForm({
 function RecipeDetail({
   recipe,
   initialServings,
-  onImageSaved,
+  onSaved,
+  cookbooks,
+  user,
   onClose,
   onPlan,
   onEdit,
 }: {
   recipe: Recipe;
   initialServings: number;
-  onImageSaved: (recipe: Recipe) => void;
+  onSaved: (recipe: Recipe) => void;
+  cookbooks: Catalog["cookbooks"];
+  user: User;
   onClose: () => void;
   onPlan: (servings: number) => void;
   onEdit: () => void;
@@ -1970,7 +2047,12 @@ function RecipeDetail({
   return (
     <Modal title={recipe.name} onClose={onClose}>
       <div className="recipe-detail">
-        <RecipeImageEditor recipe={recipe} onSaved={onImageSaved} />
+        <RecipeGallery recipe={recipe} onSaved={onSaved} />
+        <RecipeCookbooks
+          recipe={recipe}
+          cookbooks={cookbooks}
+          onSaved={onSaved}
+        />
         <p>{recipe.description}</p>
         <div className="detail-controls">
           <span>
@@ -2054,6 +2136,7 @@ function RecipeDetail({
             <ArrowUpRight size={16} />
           </a>
         )}
+        <RecipeComments recipe={recipe} user={user} onSaved={onSaved} />
         <div className="form-footer">
           <button className="secondary" onClick={onEdit}>
             <Pencil size={16} />
@@ -2070,169 +2153,6 @@ function RecipeDetail({
         </div>
       </div>
     </Modal>
-  );
-}
-function RecipeImageEditor({
-  recipe,
-  onSaved,
-}: {
-  recipe: Recipe;
-  onSaved: (recipe: Recipe) => void;
-}) {
-  const { t } = useI18n();
-  const [editing, setEditing] = useState(false),
-    [file, setFile] = useState<File | null>(null),
-    [preview, setPreview] = useState(""),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  useEffect(() => {
-    if (!file) {
-      setPreview("");
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-  async function upload(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!file) return;
-    const form = new FormData(event.currentTarget);
-    form.set("image", file);
-    setBusy(true);
-    setError("");
-    try {
-      const response = await fetch(`/api/recipes/${recipe.id}/image`, {
-        method: "POST",
-        body: form,
-        credentials: "same-origin",
-      });
-      const result = (await response.json()) as Recipe & {
-        error?: string;
-      };
-      if (!response.ok)
-        throw new ApiError(
-          result.error || t("Das Bild konnte nicht gespeichert werden."),
-        );
-      onSaved(result);
-      setFile(null);
-      setEditing(false);
-    } catch (error) {
-      setError(
-        error instanceof ApiError
-          ? error.message
-          : t("Das Bild konnte nicht gespeichert werden."),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <section className="recipe-image-editor" aria-label={t("Rezeptbild")}>
-      {(preview || recipe.imageUrl) && (
-        <img
-          className="recipe-cover"
-          src={preview || recipe.imageUrl!}
-          alt={recipe.imageAlt || recipe.name}
-          width={560}
-          height={350}
-        />
-      )}
-      {!editing ? (
-        <div className="image-actions">
-          <button
-            className="text-button"
-            onClick={() => {
-              setEditing(true);
-              setError("");
-            }}
-          >
-            <ImagePlus size={17} />
-            {recipe.imageUrl ? t("Bild ersetzen") : t("Bild hinzufügen")}
-          </button>
-          {recipe.imageUrl && (
-            <button
-              className="text-button danger"
-              disabled={busy}
-              onClick={async () => {
-                if (!confirm(t("Dieses Rezeptbild entfernen?"))) return;
-                setBusy(true);
-                setError("");
-                try {
-                  onSaved(
-                    await action<Recipe>("delete_recipe_image", {
-                      recipeId: recipe.id,
-                    }),
-                  );
-                } catch (error) {
-                  setError(
-                    error instanceof Error
-                      ? error.message
-                      : t("Das Bild konnte nicht entfernt werden."),
-                  );
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              <Trash2 size={15} />
-              {t("Bild entfernen")}
-            </button>
-          )}
-        </div>
-      ) : (
-        <form onSubmit={upload}>
-          <Field label={t("Rezeptbild (JPG, PNG oder WebP, bis 5 MB)")}>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              required
-              disabled={busy}
-              onChange={(event) => {
-                const selected = event.target.files?.[0];
-                setError("");
-                if (selected && selected.size > 5 * 1024 * 1024) {
-                  setError(t("Bilder dürfen höchstens 5 MB groß sein."));
-                  event.target.value = "";
-                  setFile(null);
-                } else setFile(selected ?? null);
-              }}
-            />
-          </Field>
-          <Field label={t("Bildbeschreibung")}>
-            <input
-              name="altText"
-              maxLength={500}
-              defaultValue={recipe.imageAlt || recipe.name}
-              placeholder={t("Beschreibe das Gericht auf dem Bild")}
-              disabled={busy}
-            />
-          </Field>
-          <div className="button-row">
-            <button className="secondary" disabled={busy || !file}>
-              {busy ? t("Wird hochgeladen…") : t("Bild speichern")}
-            </button>
-            <button
-              type="button"
-              className="text-button"
-              disabled={busy}
-              onClick={() => {
-                setEditing(false);
-                setFile(null);
-                setError("");
-              }}
-            >
-              {t("Abbrechen")}
-            </button>
-          </div>
-        </form>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-    </section>
   );
 }
 type Run = (

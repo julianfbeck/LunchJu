@@ -10,7 +10,7 @@ import {
   Plus,
   Users,
 } from "lucide-react";
-import type { Recipe } from "../shared";
+import type { Recipe, Cookbook } from "../shared";
 import { scaleIngredients } from "../scaling";
 import { formatNumber, formatQuantity } from "../locale";
 export function personCount(value: string) {
@@ -78,6 +78,7 @@ export function ServingsControl({
 }
 export function RecipeList({
   recipes,
+  cookbooks = [],
   busy,
   onOpen,
   onPlan,
@@ -85,6 +86,7 @@ export function RecipeList({
   onFavorite,
 }: {
   recipes: Recipe[];
+  cookbooks?: Cookbook[];
   busy: boolean;
   onOpen: (recipe: Recipe, servings: number) => void;
   onPlan: (recipe: Recipe, servings: number) => void;
@@ -97,6 +99,7 @@ export function RecipeList({
         <RecipeRow
           key={recipe.id}
           recipe={recipe}
+          cookbooks={cookbooks}
           busy={busy}
           onOpen={onOpen}
           onPlan={onPlan}
@@ -109,6 +112,7 @@ export function RecipeList({
 }
 function RecipeRow({
   recipe,
+  cookbooks,
   busy,
   onOpen,
   onPlan,
@@ -116,6 +120,7 @@ function RecipeRow({
   onFavorite,
 }: {
   recipe: Recipe;
+  cookbooks: Cookbook[];
   busy: boolean;
   onOpen: (recipe: Recipe, servings: number) => void;
   onPlan: (recipe: Recipe, servings: number) => void;
@@ -174,6 +179,14 @@ function RecipeRow({
         <button className="recipe-title" onClick={open}>
           {recipe.name}
         </button>
+        {recipe.cookbookIds.length > 0 && (
+          <p className="recipe-book-names">
+            {cookbooks
+              .filter((book) => recipe.cookbookIds.includes(book.id))
+              .map((book) => book.name)
+              .join(" · ")}
+          </p>
+        )}
         <p>{recipe.description}</p>
         <div className="recipe-meta">
           <span>
@@ -186,6 +199,20 @@ function RecipeRow({
             {formatNumber(recipe.servings, language)}
             {t(" Portionen")}
           </span>
+          {(recipe.images.length > 1 || recipe.comments.length > 0) && (
+            <span>
+              {[
+                recipe.images.length > 1
+                  ? t("{0} Bilder", recipe.images.length)
+                  : "",
+                recipe.comments.length
+                  ? t("{0} Tipps", recipe.comments.length)
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
           <button
             className="icon-button"
             aria-label={t("Bearbeiten: {0}", recipe.name)}

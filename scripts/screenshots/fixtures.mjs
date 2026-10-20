@@ -17,6 +17,18 @@ export function demoCatalog() {
   const ingredient = (name, quantity, unit = "g") => ({ name, quantity, unit });
   const recipe = (index, value) => ({
     id: uuid(index),
+    images: value.imageUrl
+      ? [
+          {
+            id: uuid(index + 500),
+            url: value.imageUrl,
+            altText: value.imageAlt,
+            createdAt: timestamp,
+          },
+        ]
+      : [],
+    cookbookIds: [],
+    comments: [],
     servings: 2,
     scalingNotes: "",
     favorite: true,
@@ -140,6 +152,7 @@ export function demoCatalog() {
     updatedAt: timestamp,
   }));
   return {
+    cookbooks: [],
     recipes,
     pantry,
     groceries,

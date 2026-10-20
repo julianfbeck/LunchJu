@@ -49,15 +49,34 @@ export function decodeImage(data: string) {
     bytes[index] = binary.charCodeAt(index);
   return bytes;
 }
-async function imageRecord(env: Env, recipeId: string) {
+const MAX_RECIPE_IMAGES = 20;
+type ImageRow = { id: string; image_key: string; alt_text: string };
+async function imageRecord(env: Env, recipeId: string, imageId?: string) {
   id.parse(recipeId);
+  if (imageId) id.parse(imageId);
   const record = await env.DB.prepare(
-    "SELECT image_key,image_alt FROM recipes WHERE id=?",
+    "SELECT image_key,image_alt,images_version FROM recipes WHERE id=?",
   )
     .bind(recipeId)
-    .first<{ image_key: string | null; image_alt: string }>();
+    .first<{
+      image_key: string | null;
+      image_alt: string;
+      images_version: number;
+    }>();
   if (!record) throw new HttpError(404, "Rezept nicht gefunden.");
-  return record;
+  const image = imageId
+    ? await env.DB.prepare(
+        "SELECT id,image_key,alt_text FROM recipe_images WHERE recipe_id=? AND id=?",
+      )
+        .bind(recipeId, imageId)
+        .first<ImageRow>()
+    : await env.DB.prepare(
+        "SELECT id,image_key,alt_text FROM recipe_images WHERE recipe_id=? AND image_key=?",
+      )
+        .bind(recipeId, record.image_key)
+        .first<ImageRow>();
+  if (imageId && !image) throw new HttpError(404, "Rezeptbild nicht gefunden.");
+  return { ...record, selected: image };
 }
 async function cleanupImage(env: Env, key: string) {
   try {
@@ -66,15 +85,37 @@ async function cleanupImage(env: Env, key: string) {
     console.warn("Verwaistes Rezeptbild konnte nicht entfernt werden.");
   }
 }
+const conflict = () =>
+  new HttpError(
+    409,
+    "Das Rezeptbild wurde zwischenzeitlich geändert. Bitte lade es erneut.",
+  );
 export async function uploadRecipeImage(
   env: Env,
   recipeId: string,
   bytes: Uint8Array,
   contentType: string,
   altText: string,
+  options: { append?: boolean; imageId?: string } = {},
 ) {
   validateImage(bytes, contentType);
-  const record = await imageRecord(env, recipeId);
+  if (options.append && options.imageId)
+    throw new HttpError(
+      400,
+      "Wähle entweder ein neues oder ein vorhandenes Bild.",
+    );
+  const record = await imageRecord(env, recipeId, options.imageId);
+  const selected = options.append ? null : record.selected;
+  if (!selected) {
+    const count = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM recipe_images WHERE recipe_id=?",
+    )
+      .bind(recipeId)
+      .first<{ n: number }>();
+    if (count!.n >= MAX_RECIPE_IMAGES)
+      throw new HttpError(400, "Ein Rezept kann höchstens 20 Bilder haben.");
+  }
+  const imageId = selected?.id ?? crypto.randomUUID();
   const key = `recipes/${recipeId}/${crypto.randomUUID()}.${extensions[contentType]}`;
   try {
     await bucket(env).put(key, bytes, { httpMetadata: { contentType } });
@@ -85,48 +126,153 @@ export async function uploadRecipeImage(
       "Das Bild konnte nicht gespeichert werden. Bitte versuche es erneut.",
     );
   }
+  const time = now();
+  const cover = !record.image_key || selected?.image_key === record.image_key;
+  // Both writes share an optimistic revision check inside one D1 transaction.
+  // Concurrent uploads/deletes cannot overwrite each other or create orphan rows.
+  const guard =
+    "EXISTS(SELECT 1 FROM recipes WHERE id=? AND images_version=? AND image_key IS ?)";
   try {
-    const updated = await env.DB.prepare(
-      "UPDATE recipes SET image_key=?,image_alt=?,updated_at=? WHERE id=? AND image_key IS ? RETURNING id",
-    )
-      .bind(key, altText, now(), recipeId, record.image_key)
-      .first();
-    if (!updated)
-      throw new HttpError(
-        409,
-        "Das Rezeptbild wurde zwischenzeitlich geändert. Bitte lade es erneut.",
-      );
+    const writes = await env.DB.batch([
+      selected
+        ? env.DB.prepare(
+            `UPDATE recipe_images SET image_key=?,alt_text=? WHERE id=? AND recipe_id=? AND image_key=? AND ${guard}`,
+          ).bind(
+            key,
+            altText,
+            imageId,
+            recipeId,
+            selected.image_key,
+            recipeId,
+            record.images_version,
+            record.image_key,
+          )
+        : env.DB.prepare(
+            `INSERT INTO recipe_images(id,recipe_id,image_key,alt_text,created_at) SELECT ?,?,?,?,? WHERE ${guard} AND (SELECT COUNT(*) FROM recipe_images WHERE recipe_id=?)<?`,
+          ).bind(
+            imageId,
+            recipeId,
+            key,
+            altText,
+            time,
+            recipeId,
+            record.images_version,
+            record.image_key,
+            recipeId,
+            MAX_RECIPE_IMAGES,
+          ),
+      env.DB.prepare(
+        "UPDATE recipes SET image_key=CASE WHEN ? THEN ? ELSE image_key END,image_alt=CASE WHEN ? THEN ? ELSE image_alt END,images_version=images_version+1,updated_at=? WHERE id=? AND images_version=? AND image_key IS ? AND EXISTS(SELECT 1 FROM recipe_images WHERE recipe_id=? AND image_key=?) RETURNING id",
+      ).bind(
+        +cover,
+        key,
+        +cover,
+        altText,
+        time,
+        recipeId,
+        record.images_version,
+        record.image_key,
+        recipeId,
+        key,
+      ),
+    ]);
+    if (!writes[1].results.length) throw conflict();
   } catch (error) {
     await cleanupImage(env, key);
     throw error;
   }
-  if (record.image_key) await cleanupImage(env, record.image_key);
+  if (selected) await cleanupImage(env, selected.image_key);
   return loadRecipe(env, recipeId);
 }
-export async function deleteRecipeImage(env: Env, recipeId: string) {
-  const record = await imageRecord(env, recipeId);
-  if (record.image_key) {
-    const updated = await env.DB.prepare(
-      "UPDATE recipes SET image_key=NULL,image_alt='',updated_at=? WHERE id=? AND image_key IS ? RETURNING id",
-    )
-      .bind(now(), recipeId, record.image_key)
-      .first();
-    if (!updated)
-      throw new HttpError(
-        409,
-        "Das Rezeptbild wurde zwischenzeitlich geändert. Bitte lade es erneut.",
-      );
-    await cleanupImage(env, record.image_key);
-  }
+export async function deleteRecipeImage(
+  env: Env,
+  recipeId: string,
+  imageId?: string,
+) {
+  const record = await imageRecord(env, recipeId, imageId);
+  if (!record.selected) return loadRecipe(env, recipeId);
+  const selected = record.selected;
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      "DELETE FROM recipe_images WHERE id=? AND recipe_id=? AND image_key=? AND EXISTS(SELECT 1 FROM recipes WHERE id=? AND images_version=? AND image_key IS ?)",
+    ).bind(
+      selected.id,
+      recipeId,
+      selected.image_key,
+      recipeId,
+      record.images_version,
+      record.image_key,
+    ),
+    env.DB.prepare(
+      `UPDATE recipes SET
+      image_key=CASE WHEN image_key=? THEN (SELECT image_key FROM recipe_images WHERE recipe_id=? ORDER BY created_at,id LIMIT 1) ELSE image_key END,
+      image_alt=CASE WHEN image_key=? THEN COALESCE((SELECT alt_text FROM recipe_images WHERE recipe_id=? ORDER BY created_at,id LIMIT 1),'') ELSE image_alt END,
+      images_version=images_version+1,updated_at=? WHERE id=? AND images_version=? AND image_key IS ? AND NOT EXISTS(SELECT 1 FROM recipe_images WHERE id=?) RETURNING id`,
+    ).bind(
+      selected.image_key,
+      recipeId,
+      selected.image_key,
+      recipeId,
+      now(),
+      recipeId,
+      record.images_version,
+      record.image_key,
+      selected.id,
+    ),
+  ]);
+  if (!results[1].results.length) throw conflict();
+  await cleanupImage(env, selected.image_key);
   return loadRecipe(env, recipeId);
 }
-export async function getRecipeImage(env: Env, recipeId: string) {
-  const record = await imageRecord(env, recipeId);
-  if (!record.image_key)
+export async function updateRecipeImage(
+  env: Env,
+  recipeId: string,
+  imageId: string,
+  altText?: string,
+  makeCover = false,
+) {
+  const record = await imageRecord(env, recipeId, imageId);
+  const image = record.selected!;
+  const alt = altText ?? image.alt_text;
+  const cover = makeCover || record.image_key === image.image_key;
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      "UPDATE recipe_images SET alt_text=? WHERE id=? AND recipe_id=? AND EXISTS(SELECT 1 FROM recipes WHERE id=? AND images_version=? AND image_key IS ?)",
+    ).bind(
+      alt,
+      imageId,
+      recipeId,
+      recipeId,
+      record.images_version,
+      record.image_key,
+    ),
+    env.DB.prepare(
+      "UPDATE recipes SET image_key=CASE WHEN ? THEN ? ELSE image_key END,image_alt=CASE WHEN ? THEN ? ELSE image_alt END,images_version=images_version+1,updated_at=? WHERE id=? AND images_version=? AND image_key IS ? RETURNING id",
+    ).bind(
+      +cover,
+      image.image_key,
+      +cover,
+      alt,
+      now(),
+      recipeId,
+      record.images_version,
+      record.image_key,
+    ),
+  ]);
+  if (!results[1].results.length) throw conflict();
+  return loadRecipe(env, recipeId);
+}
+export async function getRecipeImage(
+  env: Env,
+  recipeId: string,
+  imageId?: string,
+) {
+  const record = await imageRecord(env, recipeId, imageId);
+  if (!record.selected)
     throw new HttpError(404, "Dieses Rezept hat noch kein Bild.");
   let image: R2ObjectBody | null;
   try {
-    image = await bucket(env).get(record.image_key);
+    image = await bucket(env).get(record.selected.image_key);
   } catch (error) {
     if (error instanceof HttpError) throw error;
     throw new HttpError(
@@ -135,16 +281,29 @@ export async function getRecipeImage(env: Env, recipeId: string) {
     );
   }
   if (!image) throw new HttpError(404, "Rezeptbild nicht gefunden.");
-  return { image, altText: record.image_alt };
+  return {
+    image,
+    altText: record.selected.alt_text,
+    imageId: record.selected.id,
+  };
 }
-export async function recipeImageData(env: Env, recipeId: string) {
-  const { image, altText } = await getRecipeImage(env, recipeId);
+export async function recipeImageData(
+  env: Env,
+  recipeId: string,
+  imageId?: string,
+) {
+  const {
+    image,
+    altText,
+    imageId: selectedId,
+  } = await getRecipeImage(env, recipeId, imageId);
   const bytes = new Uint8Array(await image.arrayBuffer());
   let binary = "";
   for (let offset = 0; offset < bytes.length; offset += 8192)
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
   return {
     recipeId,
+    imageId: selectedId,
     data: btoa(binary),
     mimeType: image.httpMetadata?.contentType ?? "image/jpeg",
     altText,

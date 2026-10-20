@@ -4,6 +4,9 @@ import {
   mealPlanMissing,
   type Catalog,
   type Recipe,
+  type Cookbook,
+  type RecipeComment,
+  type RecipeImage,
   type PantryItem,
   type Meal,
   type Grocery,
@@ -32,6 +35,9 @@ export function recipe(row: Row): Recipe {
       ? `/api/recipes/${row.id}/image?v=${encodeURIComponent(String(row.image_key))}`
       : null,
     imageAlt: String(row.image_alt ?? ""),
+    images: [],
+    cookbookIds: [],
+    comments: [],
     name: String(row.name),
     description: String(row.description),
     servings: Number(row.servings),
@@ -45,6 +51,61 @@ export function recipe(row: Row): Recipe {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
+}
+export function cookbook(row: Row): Cookbook {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    description: String(row.description),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+function comment(row: Row): RecipeComment {
+  return {
+    id: String(row.id),
+    recipeId: String(row.recipe_id),
+    authorId: String(row.author_id),
+    authorName: String(row.author_name),
+    agent: !!row.agent,
+    body: String(row.body),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+// Load relations in three bounded queries for the entire catalog, avoiding a
+// separate set of SQL requests for every recipe.
+async function recipeRelations(env: Env, recipes: Recipe[], recipeId?: string) {
+  const where = recipeId ? " WHERE recipe_id=?" : "";
+  const values = recipeId ? [recipeId] : [];
+  const [images, memberships, comments] = await Promise.all([
+    rows(
+      env.DB,
+      `SELECT * FROM recipe_images${where} ORDER BY created_at,id`,
+      ...values,
+    ),
+    rows(env.DB, `SELECT * FROM recipe_cookbooks${where}`, ...values),
+    rows(
+      env.DB,
+      `SELECT c.*,u.name AS author_name FROM recipe_comments c JOIN users u ON u.id=c.author_id${recipeId ? " WHERE c.recipe_id=?" : ""} ORDER BY c.created_at,c.id`,
+      ...values,
+    ),
+  ]);
+  const byId = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+  for (const row of images) {
+    const image: RecipeImage = {
+      id: String(row.id),
+      url: `/api/recipes/${row.recipe_id}/images/${row.id}?v=${encodeURIComponent(String(row.image_key))}`,
+      altText: String(row.alt_text),
+      createdAt: String(row.created_at),
+    };
+    byId.get(String(row.recipe_id))?.images.push(image);
+  }
+  for (const row of memberships)
+    byId.get(String(row.recipe_id))?.cookbookIds.push(String(row.cookbook_id));
+  for (const row of comments)
+    byId.get(String(row.recipe_id))?.comments.push(comment(row));
+  return recipes;
 }
 export function pantryItem(row: Row): PantryItem {
   return {
@@ -123,6 +184,7 @@ export async function catalog(
     listId,
     preferences,
     language,
+    cookbooks,
   ] = await Promise.all([
     rows(env.DB, "SELECT * FROM recipes ORDER BY favorite DESC,name"),
     rows(
@@ -135,9 +197,11 @@ export async function catalog(
     setting(env, "bring_list"),
     setting(env, "preferences"),
     accountLanguage(env, access.user.id),
+    rows(env.DB, "SELECT * FROM cookbooks ORDER BY name COLLATE NOCASE,id"),
   ]);
   return {
-    recipes: recipes.map(recipe),
+    recipes: await recipeRelations(env, recipes.map(recipe)),
+    cookbooks: cookbooks.map(cookbook),
     pantry: pantry.map(pantryItem),
     meals: meals.map(meal),
     groceries: groceries.map(grocery),
@@ -177,7 +241,7 @@ export async function loadRecipe(env: Env, id: string) {
     .bind(id)
     .first<Row>();
   if (!value) throw new HttpError(404, "Rezept nicht gefunden.");
-  return recipe(value);
+  return (await recipeRelations(env, [recipe(value)], id))[0];
 }
 export async function saveRecipe(
   env: Env,
@@ -185,25 +249,47 @@ export async function saveRecipe(
   id: string = crypto.randomUUID(),
 ) {
   const time = now();
-  await env.DB.prepare(
+  const writes: D1PreparedStatement[] = [];
+  if (data.cookbookIds !== undefined) {
+    const ids = [...new Set(data.cookbookIds)];
+    if (ids.length) {
+      const found = await rows(
+        env.DB,
+        `SELECT id FROM cookbooks WHERE id IN (${ids.map(() => "?").join(",")})`,
+        ...ids,
+      );
+      if (found.length !== ids.length)
+        throw new HttpError(404, "Kochbuch nicht gefunden.");
+    }
+    writes.push(
+      env.DB.prepare("DELETE FROM recipe_cookbooks WHERE recipe_id=?").bind(id),
+    );
+    writes.push(
+      ...ids.map((bookId) =>
+        env.DB.prepare(
+          "INSERT INTO recipe_cookbooks(recipe_id,cookbook_id) VALUES (?,?)",
+        ).bind(id, bookId),
+      ),
+    );
+  }
+  const write = env.DB.prepare(
     `INSERT INTO recipes(id,name,description,servings,minutes,ingredients,instructions,tags,source_url,favorite,created_at,updated_at,scaling_notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,servings=excluded.servings,minutes=excluded.minutes,ingredients=excluded.ingredients,instructions=excluded.instructions,tags=excluded.tags,source_url=excluded.source_url,favorite=excluded.favorite,updated_at=excluded.updated_at,scaling_notes=excluded.scaling_notes`,
-  )
-    .bind(
-      id,
-      data.name,
-      data.description,
-      data.servings,
-      data.minutes,
-      JSON.stringify(data.ingredients),
-      JSON.stringify(data.instructions),
-      JSON.stringify(data.tags),
-      data.sourceUrl,
-      +data.favorite,
-      time,
-      time,
-      data.scalingNotes,
-    )
-    .run();
+  ).bind(
+    id,
+    data.name,
+    data.description,
+    data.servings,
+    data.minutes,
+    JSON.stringify(data.ingredients),
+    JSON.stringify(data.instructions),
+    JSON.stringify(data.tags),
+    data.sourceUrl,
+    +data.favorite,
+    time,
+    time,
+    data.scalingNotes,
+  );
+  await env.DB.batch([write, ...writes]);
   return loadRecipe(env, id);
 }
 export async function savePantry(
@@ -336,12 +422,14 @@ export async function deleteItem(
   table: "recipes" | "pantry" | "meals" | "groceries",
   id: string,
 ) {
-  const image =
+  const images =
     table === "recipes"
-      ? await env.DB.prepare("SELECT image_key FROM recipes WHERE id=?")
-          .bind(id)
-          .first<{ image_key: string | null }>()
-      : null;
+      ? await rows(
+          env.DB,
+          "SELECT image_key FROM recipe_images WHERE recipe_id=?",
+          id,
+        )
+      : [];
   if (table === "groceries")
     await env.DB.batch([
       env.DB.prepare(
@@ -350,9 +438,15 @@ export async function deleteItem(
       env.DB.prepare("DELETE FROM groceries WHERE id=?").bind(id),
     ]);
   else await env.DB.prepare(`DELETE FROM ${table} WHERE id=?`).bind(id).run();
-  if (image?.image_key && env.IMAGES)
-    await env.IMAGES.delete(image.image_key).catch(() =>
-      console.warn("Verwaistes Rezeptbild konnte nicht entfernt werden."),
+  if (env.IMAGES)
+    await Promise.all(
+      images.map((image) =>
+        env
+          .IMAGES!.delete(String(image.image_key))
+          .catch(() =>
+            console.warn("Verwaistes Rezeptbild konnte nicht entfernt werden."),
+          ),
+      ),
     );
   return { deleted: id };
 }
