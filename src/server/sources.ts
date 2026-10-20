@@ -38,6 +38,12 @@ export async function listRecipeSources(env: Env) {
   ).all<Row>();
   return results.map(source);
 }
+export async function recipeSourceInboxSummary(env: Env) {
+  const row = await env.DB.prepare(
+    "SELECT count(CASE WHEN status='pending' AND (kind!='image' OR image_key IS NOT NULL) THEN 1 END) AS pending,count(CASE WHEN status='pending' AND image_key IS NOT NULL THEN 1 END) AS photos,count(CASE WHEN status='needs_info' THEN 1 END) AS needsInfo FROM recipe_sources",
+  ).first<{ pending: number; photos: number; needsInfo: number }>();
+  return row ?? { pending: 0, photos: 0, needsInfo: 0 };
+}
 export async function loadRecipeSource(env: Env, sourceId: string) {
   id.parse(sourceId);
   const row = await env.DB.prepare(select + " WHERE s.id=?")

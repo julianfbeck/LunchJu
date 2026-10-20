@@ -2057,6 +2057,48 @@ input[type="file"] {
 }
 
 /* Source inbox: user input stays local to LunchJu until an agent reads it. */
+.recipe-photo-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+.recipe-photo-entry strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.recipe-photo-entry p {
+  max-width: 430px;
+  font-size: 12px;
+  margin-top: 5px;
+}
+.recipe-photo-entry .button-row,
+.source-photo-picker .button-row {
+  margin: 0;
+  gap: 8px 16px;
+}
+.recipe-photo-entry button,
+.source-photo-picker button {
+  min-height: 44px;
+}
+.source-photo-picker {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+.source-photo-preview {
+  display: block;
+  max-width: 100%;
+  width: 320px;
+  max-height: 360px;
+  object-fit: contain;
+  object-position: left;
+  border: 1px solid var(--line);
+  background: white;
+}
 .source-inbox {
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);

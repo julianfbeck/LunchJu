@@ -286,7 +286,7 @@ export const operations = {
     },
   ),
   list_recipe_sources: operation(
-    "Liest den gemeinsamen Quelleneingang: Instagram Reels, TikTok, YouTube Shorts, Freitext und private Bilder. Standardmäßig nur bereite, offene Quellen; ready=false wartet auf einen Bild-Upload. LunchJu ruft keine externe Plattform ab. Der Agent liest Links mit seinen eigenen Browser-/Video-/Transkriptwerkzeugen; Bilder mit get_recipe_source_image. recipeId bedeutet ein bestehendes Rezept ergänzen, sonst ein neues erstellen. Fehlende Angaben niemals erfinden, sondern needs_info setzen.",
+    "Bei jeder neuen Verbindung zuerst prüfen: vorgemerkte Rezeptimporte aus Kamerafotos, Instagram Reels, TikTok, YouTube Shorts, Freitext und privaten Bildern. Mit Schreibzugriff offene Quellen auslesen, Rezepte erstellen oder ergänzen und passenden vorhandenen Kochbüchern zuordnen. Standardmäßig nur bereite, offene Quellen; ready=false wartet auf einen Bild-Upload. LunchJu ruft keine externe Plattform ab. Der Agent liest Links mit seinen eigenen Browser-/Video-/Transkriptwerkzeugen; Bilder mit get_recipe_source_image. recipeId bedeutet ein bestehendes Rezept ergänzen; sonst vor dem Anlegen im Katalog nach Duplikaten suchen. Fehlende Angaben niemals erfinden, sondern needs_info setzen. Erst nach dem Speichern Rezept zuordnen und done setzen.",
     "mcp:read",
     z.object({
       status: z
