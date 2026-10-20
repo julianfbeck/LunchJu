@@ -2,7 +2,7 @@
 
 A shared kitchen built for people and their agents. Plan meals, keep recipes, track pantry stock and food history, and manage groceries from a mobile-first website or an authenticated MCP client.
 
-Live app: [lunchju.beanvault.workers.dev](https://lunchju.beanvault.workers.dev)
+Live app: [lunchju.juli.sh](https://lunchju.juli.sh)
 
 ## What it does
 
@@ -53,7 +53,7 @@ Add a spare passkey in Settings before replacing your only device. Passkeys are 
 
 ## Deployment
 
-The checked-in Wrangler configuration targets the `lunchju` Worker and its dedicated D1 database. For another Cloudflare account, create a D1 database and replace its ID and `APP_ORIGIN` in `wrangler.jsonc`.
+The checked-in Wrangler configuration targets the `lunchju` Worker, the `lunchju.juli.sh` custom domain and its dedicated D1 database. Wrangler manages the domain's DNS record and TLS certificate. The `workers.dev` endpoint and preview URLs are disabled. For another Cloudflare account, create a D1 database and replace its ID, domain route and `APP_ORIGIN` in `wrangler.jsonc`.
 
 ```sh
 npx wrangler login
@@ -75,7 +75,7 @@ Health endpoint: `GET /api/health`. Do not delete or replace the OAuth Durable O
 Add this streamable HTTP MCP server to an OAuth-capable client:
 
 ```text
-https://lunchju.beanvault.workers.dev/mcp
+https://lunchju.juli.sh/mcp
 ```
 
 The client discovers the authorization server, registers a client, and opens consent in your browser. Sign in with a LunchJu passkey, then choose permissions:

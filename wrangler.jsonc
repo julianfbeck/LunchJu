@@ -1,6 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "lunchju",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "lunchju.juli.sh", "custom_domain": true }],
   "main": "src/server.ts",
   "compatibility_date": "2026-10-19",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -18,7 +21,7 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LunchJuOAuth"] }],
   "vars": {
-    "APP_ORIGIN": "https://lunchju.beanvault.workers.dev",
+    "APP_ORIGIN": "https://lunchju.juli.sh",
     "HOME_NAME": "Our kitchen",
     "TIME_ZONE": "Europe/Berlin",
   },
