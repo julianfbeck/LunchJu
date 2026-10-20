@@ -16,6 +16,7 @@ import {
   grocerySchema,
 } from "../shared";
 import { HttpError, now, type Env, type Access } from "./types";
+import { listRecipeSources } from "./sources";
 import { scaleIngredients, type RecipeSnapshot } from "../scaling";
 
 type Row = Record<string, unknown>;
@@ -45,6 +46,14 @@ export function recipe(row: Row): Recipe {
     minutes: Number(row.minutes),
     ingredients: json(row.ingredients),
     instructions: json(row.instructions),
+    steps:
+      row.steps && json<Recipe["steps"]>(row.steps).length
+        ? json(row.steps)
+        : json<string[]>(row.instructions).map((description) => ({
+            title: "",
+            description,
+            durationMinutes: null,
+          })),
     tags: json(row.tags),
     sourceUrl: String(row.source_url),
     favorite: !!row.favorite,
@@ -185,6 +194,7 @@ export async function catalog(
     preferences,
     language,
     cookbooks,
+    sources,
   ] = await Promise.all([
     rows(env.DB, "SELECT * FROM recipes ORDER BY favorite DESC,name"),
     rows(
@@ -198,10 +208,12 @@ export async function catalog(
     setting(env, "preferences"),
     accountLanguage(env, access.user.id),
     rows(env.DB, "SELECT * FROM cookbooks ORDER BY name COLLATE NOCASE,id"),
+    listRecipeSources(env),
   ]);
   return {
     recipes: await recipeRelations(env, recipes.map(recipe)),
     cookbooks: cookbooks.map(cookbook),
+    sources,
     pantry: pantry.map(pantryItem),
     meals: meals.map(meal),
     groceries: groceries.map(grocery),
@@ -249,6 +261,13 @@ export async function saveRecipe(
   id: string = crypto.randomUUID(),
 ) {
   const time = now();
+  const steps =
+    data.steps ??
+    data.instructions.map((description) => ({
+      title: "",
+      description,
+      durationMinutes: null,
+    }));
   const writes: D1PreparedStatement[] = [];
   if (data.cookbookIds !== undefined) {
     const ids = [...new Set(data.cookbookIds)];
@@ -273,7 +292,7 @@ export async function saveRecipe(
     );
   }
   const write = env.DB.prepare(
-    `INSERT INTO recipes(id,name,description,servings,minutes,ingredients,instructions,tags,source_url,favorite,created_at,updated_at,scaling_notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,servings=excluded.servings,minutes=excluded.minutes,ingredients=excluded.ingredients,instructions=excluded.instructions,tags=excluded.tags,source_url=excluded.source_url,favorite=excluded.favorite,updated_at=excluded.updated_at,scaling_notes=excluded.scaling_notes`,
+    `INSERT INTO recipes(id,name,description,servings,minutes,ingredients,instructions,tags,source_url,favorite,created_at,updated_at,scaling_notes,steps) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,servings=excluded.servings,minutes=excluded.minutes,ingredients=excluded.ingredients,instructions=excluded.instructions,tags=excluded.tags,source_url=excluded.source_url,favorite=excluded.favorite,updated_at=excluded.updated_at,scaling_notes=excluded.scaling_notes,steps=excluded.steps`,
   ).bind(
     id,
     data.name,
@@ -281,13 +300,14 @@ export async function saveRecipe(
     data.servings,
     data.minutes,
     JSON.stringify(data.ingredients),
-    JSON.stringify(data.instructions),
+    JSON.stringify(steps.map((step) => step.description)),
     JSON.stringify(data.tags),
     data.sourceUrl,
     +data.favorite,
     time,
     time,
     data.scalingNotes,
+    JSON.stringify(steps),
   );
   await env.DB.batch([write, ...writes]);
   return loadRecipe(env, id);

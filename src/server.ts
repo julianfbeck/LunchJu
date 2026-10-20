@@ -18,6 +18,10 @@ import {
   MAX_IMAGE_BYTES,
 } from "./server/images";
 import { audit } from "./server/db";
+import {
+  getRecipeSourceImage,
+  uploadRecipeSourceImage,
+} from "./server/sources";
 export { LunchJuOAuth } from "./server/oauth";
 
 export async function cleanup(env: Env) {
@@ -61,13 +65,15 @@ export async function routeRequest(
     const imageRoute = url.pathname.match(
       /^\/api\/recipes\/([^/]+)\/(?:image|images\/([^/]+))$/,
     );
-    if (imageRoute) {
+    const sourceImageRoute = url.pathname.match(
+      /^\/api\/recipe-sources\/([^/]+)\/image$/,
+    );
+    if (imageRoute || sourceImageRoute) {
+      const resourceId = (sourceImageRoute ?? imageRoute)![1];
       if (request.method === "GET") {
-        const { image } = await getRecipeImage(
-          env,
-          imageRoute[1],
-          imageRoute[2],
-        );
+        const { image } = sourceImageRoute
+          ? await getRecipeSourceImage(env, resourceId)
+          : await getRecipeImage(env, resourceId, imageRoute![2]);
         return new Response(image.body, {
           headers: {
             "Content-Type": image.httpMetadata?.contentType ?? "image/jpeg",
@@ -101,18 +107,30 @@ export async function routeRequest(
           400,
           "Bitte wähle ein Bild und eine Beschreibung mit höchstens 500 Zeichen.",
         );
-      const recipe = await uploadRecipeImage(
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const result = sourceImageRoute
+        ? await uploadRecipeSourceImage(
+            env,
+            resourceId,
+            bytes,
+            file.type,
+            altText.trim(),
+          )
+        : await uploadRecipeImage(
+            env,
+            resourceId,
+            bytes,
+            file.type,
+            altText.trim(),
+            { append: form.get("append") === "true", imageId: imageRoute![2] },
+          );
+      await audit(
         env,
-        imageRoute[1],
-        new Uint8Array(await file.arrayBuffer()),
-        file.type,
-        altText.trim(),
-        { append: form.get("append") === "true", imageId: imageRoute[2] },
-      );
-      await audit(env, access, "upload_recipe_image", imageRoute[1]).catch(() =>
-        console.error("Protokollierung fehlgeschlagen."),
-      );
-      return Response.json(recipe);
+        access,
+        sourceImageRoute ? "upload_recipe_source_image" : "upload_recipe_image",
+        resourceId,
+      ).catch(() => console.error("Protokollierung fehlgeschlagen."));
+      return Response.json(result);
     }
     if (request.method !== "POST") throw new HttpError(405, "Verwende POST.");
     requireSameOrigin(request, env);

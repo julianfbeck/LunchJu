@@ -15,7 +15,7 @@ function bucket(env: Env) {
     throw new HttpError(503, "Der Bildspeicher ist noch nicht eingerichtet.");
   return env.IMAGES;
 }
-function validateImage(
+export function validateImage(
   bytes: Uint8Array,
   contentType: string,
 ): asserts contentType is ImageType {

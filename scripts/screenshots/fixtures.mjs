@@ -29,6 +29,11 @@ export function demoCatalog() {
       : [],
     cookbookIds: [],
     comments: [],
+    steps: value.instructions.map((description, index) => ({
+      title: `Schritt ${index + 1}`,
+      description,
+      durationMinutes: null,
+    })),
     servings: 2,
     scalingNotes: "",
     favorite: true,
@@ -153,6 +158,7 @@ export function demoCatalog() {
   }));
   return {
     cookbooks: [],
+    sources: [],
     recipes,
     pantry,
     groceries,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { RecipeSource } from "./recipe-sources";
 import type { Language } from "./i18n";
 z.config(z.locales.de());
 
@@ -36,6 +37,12 @@ export const ingredientSchema = z.object({
   unit,
   scaling: ingredientScalingSchema.optional(),
 });
+export const recipeStepSchema = z.object({
+  title: z.string().trim().max(160).default(""),
+  description: z.string().trim().min(1).max(3000),
+  durationMinutes: z.number().int().min(1).max(2880).nullable().default(null),
+});
+export type RecipeStep = z.infer<typeof recipeStepSchema>;
 export const recipeSchema = z.object({
   name: text,
   description: z.string().max(3000).default(""),
@@ -43,7 +50,8 @@ export const recipeSchema = z.object({
   scalingNotes: z.string().trim().max(2000).default(""),
   minutes: z.number().int().min(0).max(2880).default(30),
   ingredients: z.array(ingredientSchema).min(1).max(100),
-  instructions: z.array(z.string().trim().min(1).max(3000)).min(1).max(60),
+  instructions: z.array(z.string().trim().min(1).max(3000)).max(60).default([]),
+  steps: z.array(recipeStepSchema).min(1).max(60).optional(),
   tags: z.array(text).max(15).default([]),
   sourceUrl: z
     .union([
@@ -58,6 +66,11 @@ export const recipeSchema = z.object({
   favorite: z.boolean().default(false),
   cookbookIds: z.array(id).max(50).optional(),
 });
+export const hasRecipeInstructions = (
+  value: Pick<z.infer<typeof recipeSchema>, "instructions" | "steps">,
+) => !!(value.steps?.length || value.instructions.length);
+export const recipeInstructionsMessage =
+  "Füge mindestens einen Zubereitungsschritt hinzu.";
 export const cookbookSchema = z.object({
   name: text,
   description: z.string().trim().max(2000).default(""),
@@ -115,6 +128,7 @@ export type Recipe = z.infer<typeof recipeSchema> & {
   id: string;
   imageUrl: string | null;
   imageAlt: string;
+  steps: RecipeStep[];
   images: RecipeImage[];
   cookbookIds: string[];
   comments: RecipeComment[];
@@ -148,6 +162,7 @@ export type User = {
 export type Catalog = {
   recipes: Recipe[];
   cookbooks: Cookbook[];
+  sources: RecipeSource[];
   pantry: PantryItem[];
   meals: Meal[];
   groceries: Grocery[];

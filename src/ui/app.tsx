@@ -1,4 +1,10 @@
 import { useI18n, LanguageSelector } from "./language";
+import { RecipeSources } from "./recipe-sources";
+import {
+  RecipeInstructions,
+  RecipeStepsEditor,
+  emptyStep,
+} from "./recipe-steps";
 import { InstallApp } from "./pwa";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -49,6 +55,7 @@ import type {
   Meal,
   Grocery,
   Ingredient,
+  RecipeStep,
   User,
 } from "../shared";
 import {
@@ -900,6 +907,17 @@ function KitchenContent({
             recipes={data.recipes}
             count={filterRecipes(data.recipes, recipeFilters, language).length}
           />
+          <RecipeSources
+            sources={data.sources}
+            recipes={data.recipes}
+            onChanged={() =>
+              client.invalidateQueries({ queryKey: ["catalog"] })
+            }
+            onOpen={(recipe) => {
+              setDetailServings(recipe.servings);
+              setDetail(recipe);
+            }}
+          />
           <CookbookManager
             cookbooks={data.cookbooks}
             recipes={data.recipes}
@@ -1443,6 +1461,9 @@ function EditorForm({
           ])
         : [],
     ),
+    [steps, setSteps] = useState<RecipeStep[]>(
+      (value as Recipe)?.steps ?? [emptyStep()],
+    ),
     [cookbookIds, setCookbookIds] = useState<string[]>(
       (value as Recipe)?.cookbookIds ?? [],
     ),
@@ -1467,10 +1488,8 @@ function EditorForm({
           .filter(Boolean),
         favorite: (value as Recipe)?.favorite ?? false,
         cookbookIds,
-        instructions: str("instructions")
-          .split("\n")
-          .map((value) => value.trim())
-          .filter(Boolean),
+        steps,
+        instructions: steps.map((step) => step.description),
         scalingNotes: str("scalingNotes"),
         ingredients: ingredients.map((item, index) => ({
           name: str(`ingredient-${index}`),
@@ -1805,18 +1824,7 @@ function EditorForm({
             <Plus size={16} />
             {t(" Zutat hinzufügen")}
           </button>
-          <Field label={t("Zubereitungsschritte, einer pro Zeile")}>
-            <textarea
-              name="instructions"
-              required
-              rows={5}
-              maxLength={30000}
-              defaultValue={(value as Recipe)?.instructions.join("\n")}
-              placeholder={t(
-                "Gemüse schneiden.\nEtwas Olivenöl in einer Pfanne erhitzen.\nZutaten anbraten und abschmecken.",
-              )}
-            />
-          </Field>
+          <RecipeStepsEditor steps={steps} onChange={setSteps} />
           <Field label={t("Hinweise für andere Personenzahlen (optional)")}>
             <textarea
               name="scalingNotes"
@@ -1835,7 +1843,7 @@ function EditorForm({
               placeholder={t("Schnell, Vegetarisch, Lieblingsgericht")}
             />
           </Field>
-          <Field label={t("Link zum Originalrezept (optional)")}>
+          <Field label={t("Link zum Originalrezept oder Video (optional)")}>
             <input
               name="sourceUrl"
               type="url"
@@ -2119,12 +2127,10 @@ function RecipeDetail({
             </li>
           ))}
         </ul>
-        <h3>{t("Zubereitung")}</h3>
-        <ol className="steps">
-          {recipe.instructions.map((step, index) => (
-            <li key={index}>{step}</li>
-          ))}
-        </ol>
+        <RecipeInstructions
+          key={JSON.stringify(recipe.steps)}
+          steps={recipe.steps}
+        />
         {recipe.sourceUrl && (
           <a
             className="text-button"
