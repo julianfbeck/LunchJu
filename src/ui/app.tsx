@@ -780,70 +780,92 @@ function KitchenContent({
           <div className="meal-list">
             {data.meals
               .filter((item) => item.date === day)
-              .map((meal) => (
-                <article className="meal-card" key={meal.id}>
-                  <div className="meal-main">
-                    <span className="eyebrow">
-                      {t(mealSlotLabels[meal.slot])}{" "}
-                      {meal.status === "eaten" ? t("· GEGESSEN") : ""}
-                    </span>
-                    <h3>{meal.name}</h3>
-                    <p>
-                      <Users size={14} />
-                      {formatNumber(meal.servings, language)}
-                      {t(" Portionen")}
-                      {meal.notes && <> · {meal.notes}</>}
-                    </p>
-                    {meal.scalingNotes && (
-                      <p className="meal-scaling-note">{meal.scalingNotes}</p>
-                    )}
-                  </div>
-                  <div className="meal-actions">
-                    {meal.status === "planned" ? (
+              .map((meal) => {
+                const recipe = data.recipes.find(
+                  (item) => item.id === meal.recipeId,
+                );
+                return (
+                  <article className="meal-card" key={meal.id}>
+                    <div className="meal-main">
+                      <span className="eyebrow">
+                        {t(mealSlotLabels[meal.slot])}{" "}
+                        {meal.status === "eaten" ? t("· GEGESSEN") : ""}
+                      </span>
+                      <h3>
+                        {recipe ? (
+                          <button
+                            type="button"
+                            className="meal-recipe-link"
+                            aria-label={t("Rezept öffnen: {0}", meal.name)}
+                            onClick={() => {
+                              setDetailServings(meal.servings);
+                              setDetail(recipe);
+                            }}
+                          >
+                            {meal.name}
+                            <BookOpen size={16} aria-hidden="true" />
+                          </button>
+                        ) : (
+                          meal.name
+                        )}
+                      </h3>
+                      <p>
+                        <Users size={14} />
+                        {formatNumber(meal.servings, language)}
+                        {t(" Portionen")}
+                        {meal.notes && <> · {meal.notes}</>}
+                      </p>
+                      {meal.scalingNotes && (
+                        <p className="meal-scaling-note">{meal.scalingNotes}</p>
+                      )}
+                    </div>
+                    <div className="meal-actions">
+                      {meal.status === "planned" ? (
+                        <button
+                          className="quiet"
+                          disabled={mutation.isPending}
+                          onClick={() =>
+                            perform(
+                              "mark_meal_eaten",
+                              {
+                                id: meal.id,
+                              },
+                              t("Im Essensverlauf gespeichert."),
+                            )
+                          }
+                        >
+                          <Check size={15} />
+                          <span>{t("Als gegessen markieren")}</span>
+                        </button>
+                      ) : (
+                        <span className="pill">
+                          <Check size={14} />
+                          {t(" Gegessen")}
+                        </span>
+                      )}
                       <button
-                        className="quiet"
-                        disabled={mutation.isPending}
+                        className="icon-button"
+                        aria-label={t("Bearbeiten: {0}", meal.name)}
                         onClick={() =>
-                          perform(
-                            "mark_meal_eaten",
-                            {
-                              id: meal.id,
-                            },
-                            t("Im Essensverlauf gespeichert."),
-                          )
+                          setEditor({
+                            type: "meal",
+                            value: meal,
+                          })
                         }
                       >
-                        <Check size={15} />
-                        <span>{t("Als gegessen markieren")}</span>
+                        <Pencil size={16} />
                       </button>
-                    ) : (
-                      <span className="pill">
-                        <Check size={14} />
-                        {t(" Gegessen")}
-                      </span>
-                    )}
-                    <button
-                      className="icon-button"
-                      aria-label={t("Bearbeiten: {0}", meal.name)}
-                      onClick={() =>
-                        setEditor({
-                          type: "meal",
-                          value: meal,
-                        })
-                      }
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      className="icon-button danger"
-                      aria-label={t("Entfernen: {0}", meal.name)}
-                      onClick={() => remove("meal", meal)}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </article>
-              ))}
+                      <button
+                        className="icon-button danger"
+                        aria-label={t("Entfernen: {0}", meal.name)}
+                        onClick={() => remove("meal", meal)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
           </div>
           {!data.meals.some((item) => item.date === day) && (
             <Empty

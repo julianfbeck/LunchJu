@@ -514,6 +514,31 @@ button.overview-card:hover strong {
   letter-spacing: -0.25px;
   overflow-wrap: anywhere;
 }
+.meal-recipe-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  background: transparent;
+  color: inherit;
+  padding: 6px 0;
+  min-height: 44px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  justify-content: flex-start;
+  white-space: normal;
+}
+.meal-recipe-link svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.meal-recipe-link:hover:not(:disabled) {
+  background: transparent;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .meal-main p {
   display: flex;
   align-items: center;
