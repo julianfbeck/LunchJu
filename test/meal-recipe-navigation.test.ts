@@ -87,6 +87,17 @@ describe("Recipe navigation from the meal plan", () => {
         expect(
           cards.every((card) => card.includes('class="icon-button danger"')),
         ).toBe(true);
+        const moveLabel =
+          language === "de"
+            ? "Auf den nächsten Tag verschieben"
+            : "Move to the next day";
+        expect(cards.filter((card) => card.includes(moveLabel))).toHaveLength(
+          3,
+        );
+        expect(
+          cards.find((card) => card.includes("Schon gegessen")),
+        ).not.toContain(moveLabel);
+        expect(unlinked.every((card) => card.includes(moveLabel))).toBe(true);
         client.clear();
       } finally {
         f.sqlite.close();

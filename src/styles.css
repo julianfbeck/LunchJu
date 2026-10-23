@@ -560,6 +560,23 @@ button.overview-card:hover strong {
   min-height: 40px;
   font-size: 12px;
 }
+.meal-actions-planned {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px 44px;
+  gap: 4px;
+}
+.meal-actions-planned .quiet {
+  align-self: stretch;
+  min-height: 44px;
+  padding: 8px 6px;
+  gap: 6px;
+}
+.meal-actions-planned .quiet svg {
+  flex-shrink: 0;
+}
+.meal-actions-planned > .icon-button:nth-last-child(2) {
+  margin-left: 0;
+}
 .plan-footer {
   display: flex;
   flex-direction: column;
@@ -1070,6 +1087,28 @@ textarea::placeholder {
 .modal-header .icon-button {
   margin-right: -8px;
 }
+@media (max-width: 599px) {
+  .modal-recipe {
+    --recipe-inset-left: max(20px, env(safe-area-inset-left));
+    --recipe-inset-right: max(20px, env(safe-area-inset-right));
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    padding: 0 var(--recipe-inset-right)
+      calc(28px + env(safe-area-inset-bottom)) var(--recipe-inset-left);
+  }
+  .modal-recipe > .modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: #fff;
+    box-shadow: 0 1px 0 var(--line);
+    margin: 0 calc(-1 * var(--recipe-inset-right)) 24px
+      calc(-1 * var(--recipe-inset-left));
+    padding: calc(12px + env(safe-area-inset-top)) var(--recipe-inset-right)
+      12px var(--recipe-inset-left);
+  }
+}
 .editor-form > .text-button {
   margin-bottom: 20px;
 }
@@ -1340,8 +1379,14 @@ textarea::placeholder {
   .meal-actions {
     width: auto;
   }
+  .meal-actions-planned {
+    grid-template-columns: auto auto 44px 44px;
+  }
   .meal-actions > .icon-button:nth-last-child(2) {
     margin-left: 6px;
+  }
+  .meal-actions-planned > .icon-button:nth-last-child(2) {
+    margin-left: 0;
   }
   .plan-footer {
     flex-direction: row;

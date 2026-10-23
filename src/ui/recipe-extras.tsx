@@ -742,7 +742,7 @@ export function RecipeComments({
     try {
       onSaved(
         await action<Recipe>(
-          comment ? "update_recipe_comment" : "add_recipe_comment",
+          comment ? "update_recipe_comment" : "add_recipe_note",
           {
             recipeId: recipe.id,
             ...(comment ? { commentId: comment.id } : {}),
@@ -761,7 +761,7 @@ export function RecipeComments({
   const input = (comment?: RecipeComment) => (
     <form onSubmit={(event) => void save(event, comment)}>
       <label>
-        {t(comment ? "Tipp bearbeiten" : "Dein Kochtipp")}
+        {t(comment ? "Notiz bearbeiten" : "Notiz fürs nächste Mal")}
         <textarea
           name="body"
           rows={3}
@@ -769,12 +769,14 @@ export function RecipeComments({
           required
           defaultValue={comment?.body ?? ""}
           disabled={busy}
-          placeholder={t("Was hat beim Kochen gut funktioniert?")}
+          placeholder={t(
+            "Zum Beispiel: Nächstes Mal weniger Salz und die Pilze länger anbraten.",
+          )}
         />
       </label>
       <div className="button-row">
         <button className="secondary" disabled={busy}>
-          {t(comment ? "Speichern" : "Tipp hinzufügen")}
+          {t(comment ? "Speichern" : "Notiz hinzufügen")}
         </button>
         {comment && (
           <button
@@ -792,16 +794,14 @@ export function RecipeComments({
   return (
     <section className="recipe-comments">
       <h3>
-        {t("Tipps & Kommentare")}{" "}
+        {t("Tipps & Notizen")}{" "}
         <span className="muted">({recipe.comments.length})</span>
       </h3>
-      {!recipe.comments.length && (
-        <p className="muted">
-          {t(
-            "Noch keine Tipps. Halte hier deine Erfahrungen und die Hinweise deines Agenten fest.",
-          )}
-        </p>
-      )}
+      <p className="muted">
+        {t(
+          "Fürs nächste Kochen gespeichert. Du und dein Agent können hier Erfahrungen und Wünsche festhalten.",
+        )}
+      </p>
       <ol>
         {recipe.comments.map((comment) => (
           <li key={comment.id}>

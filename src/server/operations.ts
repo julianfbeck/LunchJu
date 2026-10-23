@@ -49,6 +49,7 @@ import {
   saveRecipe,
   savePantry,
   saveMeal,
+  meal,
   addGrocery,
   groceryPlan,
   deleteItem,
@@ -99,6 +100,10 @@ function operation<S extends z.ZodType>(
 }
 const empty = z.object({});
 const target = z.object({ id });
+const recipeNoteSchema = z.object({
+  recipeId: id,
+  body: z.string().trim().min(1).max(3000),
+});
 const range = z
   .object({ from: date, to: date })
   .refine(
@@ -116,7 +121,7 @@ export const operations = {
     async (_, c) => catalog(c.env, c.access),
   ),
   get_recipe: operation(
-    "Liest ein Rezept mit allen Zutaten und Zubereitungsschritten.",
+    "Liest ein Rezept mit allen Zutaten, Zubereitungsschritten und dauerhaft gespeicherten Tipps/Notizen in comments. Diese Hinweise vor dem nächsten Planen oder Kochen lesen.",
     "mcp:read",
     target,
     async (input, c) => loadRecipe(c.env, input.id),
@@ -231,9 +236,16 @@ export const operations = {
       setRecipeCookbooks(c.env, input.recipeId, input.cookbookIds),
   ),
   add_recipe_comment: operation(
-    "Fügt einen Kochtipp als Kommentar in der gespeicherten contentLanguage hinzu. Autor und Agentenkennzeichnung werden automatisch gespeichert. Kommentare sind Hinweise und ändern keine Zutaten oder Skalierungsregeln.",
+    "Fügt einen dauerhaften Kochtipp oder eine Notiz für das nächste Kochen in der gespeicherten contentLanguage hinzu. Wird in recipe.comments mit Autor und Agentenkennzeichnung gespeichert; ändert keine Zutaten, Anleitung oder Skalierungsregeln. Alternativ add_recipe_note verwenden.",
     "mcp:write",
-    z.object({ recipeId: id, body: z.string().trim().min(1).max(3000) }),
+    recipeNoteSchema,
+    async (input, c) =>
+      addRecipeComment(c.env, c.access, input.recipeId, input.body),
+  ),
+  add_recipe_note: operation(
+    "Speichert eine dauerhafte Notiz für zukünftiges Planen oder Kochen in der aktuellen contentLanguage, zum Beispiel Erfahrungen, gewünschte Änderungen oder Hinweise für das nächste Mal. Fügt sie recipe.comments mit authentifiziertem Autor und Agentenkennzeichnung hinzu. Vorher vorhandene comments lesen; keine Rezepttexte, Zutaten oder Skalierungsregeln überschreiben. Bearbeiten/Entfernen mit update_recipe_comment/delete_recipe_comment.",
+    "mcp:write",
+    recipeNoteSchema,
     async (input, c) =>
       addRecipeComment(c.env, c.access, input.recipeId, input.body),
   ),
@@ -647,12 +659,32 @@ export const operations = {
     async (input, c) => saveMeal(c.env, input),
   ),
   update_meal: operation(
-    "Bearbeitet oder verschiebt eine Mahlzeit. Bei Rezeptmahlzeiten werden die gespeicherten Zutaten aktualisiert.",
+    "Bearbeitet eine Mahlzeit. Bei Rezeptmahlzeiten werden die gespeicherten Zutaten aktualisiert. Zum reinen Verschieben auf ein anderes Datum move_meal verwenden, damit alle gespeicherten Mengen erhalten bleiben.",
     "mcp:write",
     mealSchema.safeExtend({ id }),
     async ({ id, ...input }, c) => {
       await exists(c.env, "meals", id);
       return saveMeal(c.env, input, id);
+    },
+  ),
+  move_meal: operation(
+    "Verschiebt eine geplante Mahlzeit auf das angegebene absolute Datum (YYYY-MM-DD). Wiederholungen mit demselben Datum verschieben sie nicht erneut. Uhrzeit/Slot, Portionen, Zutaten, Rezeptstand und Notizen bleiben erhalten, auch wenn das Rezept inzwischen geändert oder gelöscht wurde. Bereits gegessene Mahlzeiten können nicht verschoben werden.",
+    "mcp:write",
+    z.object({ id, date }),
+    async (input, c) => {
+      const updated = await c.env.DB.prepare(
+        "UPDATE meals SET date=? WHERE id=? AND status='planned' RETURNING *",
+      )
+        .bind(input.date, input.id)
+        .first<Record<string, unknown>>();
+      if (!updated) {
+        await exists(c.env, "meals", input.id);
+        throw new HttpError(
+          409,
+          "Bereits gegessene Mahlzeiten können nicht verschoben werden.",
+        );
+      }
+      return meal(updated);
     },
   ),
   mark_meal_eaten: operation(

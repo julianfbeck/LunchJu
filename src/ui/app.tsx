@@ -819,7 +819,9 @@ function KitchenContent({
                         <p className="meal-scaling-note">{meal.scalingNotes}</p>
                       )}
                     </div>
-                    <div className="meal-actions">
+                    <div
+                      className={`meal-actions${meal.status === "planned" ? " meal-actions-planned" : ""}`}
+                    >
                       {meal.status === "planned" ? (
                         <button
                           className="quiet"
@@ -842,6 +844,43 @@ function KitchenContent({
                           <Check size={14} />
                           {t(" Gegessen")}
                         </span>
+                      )}
+                      {meal.status === "planned" && (
+                        <button
+                          type="button"
+                          className="quiet"
+                          aria-label={t(
+                            "Auf den nächsten Tag verschieben: {0}",
+                            meal.name,
+                          )}
+                          title={formatDate(
+                            addDays(meal.date, 1),
+                            { weekday: "long", day: "numeric", month: "short" },
+                            language,
+                          )}
+                          disabled={mutation.isPending}
+                          onClick={() =>
+                            perform(
+                              "move_meal",
+                              { id: meal.id, date: addDays(meal.date, 1) },
+                              t(
+                                "Verschoben auf {0}.",
+                                formatDate(
+                                  addDays(meal.date, 1),
+                                  {
+                                    weekday: "long",
+                                    day: "numeric",
+                                    month: "short",
+                                  },
+                                  language,
+                                ),
+                              ),
+                            )
+                          }
+                        >
+                          <ChevronRight size={16} aria-hidden="true" />
+                          <span>{t("Nächster Tag")}</span>
+                        </button>
                       )}
                       <button
                         className="icon-button"
@@ -1290,6 +1329,7 @@ function KitchenContent({
       {tab === "settings" && <Settings data={data} run={run} notify={notify} />}
       {editor && (
         <Modal
+          mobileFullscreen={editor.type === "recipe"}
           title={t(
             {
               recipe: editor.value?.id
@@ -1424,13 +1464,19 @@ function Modal({
   title,
   onClose,
   children,
+  mobileFullscreen = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  mobileFullscreen?: boolean;
 }) {
   const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement;
     const overflow = document.body.style.overflow;
@@ -1439,7 +1485,7 @@ function Modal({
       ?.querySelector<HTMLElement>("input,button,select,textarea")
       ?.focus();
     const key = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") closeRef.current();
       if (event.key === "Tab") {
         const focusable = ref.current?.querySelectorAll<HTMLElement>(
           "button:not(:disabled),input,select,textarea,a[href]",
@@ -1462,7 +1508,7 @@ function Modal({
       document.removeEventListener("keydown", key);
       previous?.focus();
     };
-  }, [onClose]);
+  }, []);
   return (
     <div
       className="modal-overlay"
@@ -1471,7 +1517,7 @@ function Modal({
       }}
     >
       <div
-        className="modal"
+        className={`modal${mobileFullscreen ? " modal-recipe" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
@@ -2123,7 +2169,7 @@ function RecipeDetail({
       }),
   });
   return (
-    <Modal title={recipe.name} onClose={onClose}>
+    <Modal title={recipe.name} onClose={onClose} mobileFullscreen>
       <div className="recipe-detail">
         <RecipeGallery recipe={recipe} onSaved={onSaved} />
         <RecipeCategories

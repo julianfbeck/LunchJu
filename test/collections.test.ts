@@ -15,7 +15,7 @@ import {
   RecipeFiltersBar,
 } from "../src/ui/recipe-extras";
 import { recipeFilterSchema } from "../src/recipes";
-import type { Cookbook, Recipe, Catalog } from "../src/shared";
+import type { Cookbook, Recipe, Catalog, Meal } from "../src/shared";
 
 function setup() {
   const f = fixture();
@@ -214,7 +214,69 @@ describe("Shared cookbooks and tips", () => {
       f.sqlite.prepare("SELECT COUNT(*) AS n FROM recipe_comments").get()?.n,
     ).toBe(0);
   });
-  it("exposes cookbook and comment actions over authenticated MCP and honors read-only grants", async () => {
+  it("persists agent notes without changing recipe instructions, ingredients or scaling rules", async () => {
+    const f = setup();
+    try {
+      const recipe = await f.create("Pasta", {
+        scalingNotes: "Ab sechs Portionen zwei Töpfe verwenden.",
+      });
+      const agent = { ...f.access, agent: true };
+      const updated = (await runOperation(
+        "add_recipe_note",
+        {
+          recipeId: recipe.id,
+          body: "  Beim nächsten Mal die Sauce länger einkochen.  ",
+          agent: false,
+          authorId: crypto.randomUUID(),
+        },
+        f.env,
+        agent,
+      )) as Recipe;
+      expect(updated.comments).toEqual([
+        expect.objectContaining({
+          authorId: f.access.user.id,
+          authorName: f.access.user.name,
+          agent: true,
+          body: "Beim nächsten Mal die Sauce länger einkochen.",
+        }),
+      ]);
+      const { comments: _, updatedAt: _time, ...content } = updated;
+      const { comments: _old, updatedAt: _oldTime, ...original } = recipe;
+      expect(content).toEqual(original);
+      const catalog = await f.call<Catalog>("get_catalog");
+      expect(catalog.recipes[0].comments).toEqual(updated.comments);
+      expect(
+        f.sqlite
+          .prepare(
+            "SELECT actor FROM audit_log WHERE operation='add_recipe_note'",
+          )
+          .get()?.actor,
+      ).toBe(`agent:${f.access.user.id}`);
+      await expect(
+        runOperation(
+          "add_recipe_note",
+          { recipeId: recipe.id, body: "Notiz" },
+          f.env,
+          { ...agent, scopes: ["mcp:read"] },
+        ),
+      ).rejects.toMatchObject({ status: 403 });
+      await expect(
+        f.call("add_recipe_note", { recipeId: recipe.id, body: "  " }),
+      ).rejects.toThrow();
+      await expect(
+        f.call("add_recipe_note", {
+          recipeId: crypto.randomUUID(),
+          body: "Notiz",
+        }),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(
+        (await f.call<Recipe>("get_recipe", { id: recipe.id })).comments,
+      ).toHaveLength(1);
+    } finally {
+      f.sqlite.close();
+    }
+  });
+  it("exposes cookbook, notes and meal moves over authenticated MCP and honors read-only grants", async () => {
     const f = setup();
     let scopes = ["mcp:read", "mcp:write", "mcp:admin"];
     f.env.OAUTH_STATE = {
@@ -238,7 +300,8 @@ describe("Shared cookbooks and tips", () => {
     );
     try {
       await client.connect(transport);
-      const tools = (await client.listTools()).tools.map((tool) => tool.name);
+      const listed = (await client.listTools()).tools;
+      const tools = listed.map((tool) => tool.name);
       for (const tool of [
         "list_cookbooks",
         "create_cookbook",
@@ -247,11 +310,18 @@ describe("Shared cookbooks and tips", () => {
         "list_recipes",
         "set_recipe_cookbooks",
         "add_recipe_comment",
+        "add_recipe_note",
         "update_recipe_comment",
         "delete_recipe_comment",
         "update_recipe_image",
+        "move_meal",
       ])
         expect(tools).toContain(tool);
+      expect(client.getInstructions()).toContain("add_recipe_note");
+      expect(client.getInstructions()).toContain("comments");
+      expect(
+        listed.find((tool) => tool.name === "move_meal")?.annotations,
+      ).toMatchObject({ idempotentHint: true, readOnlyHint: false });
       const book = await client.callTool({
         name: "create_cookbook",
         arguments: { name: "Wochenende" },
@@ -267,7 +337,48 @@ describe("Shared cookbooks and tips", () => {
       expect(tip.structuredContent).toMatchObject({
         comments: [{ agent: true, authorId: f.access.user.id }],
       });
+      const note = await client.callTool({
+        name: "add_recipe_note",
+        arguments: {
+          recipeId: recipe.id,
+          body: "Nächstes Mal mehr Basilikum.",
+        },
+      });
+      expect(note.isError).not.toBe(true);
+      expect((note.structuredContent as unknown as Recipe).comments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            agent: true,
+            authorId: f.access.user.id,
+            body: "Nächstes Mal mehr Basilikum.",
+          }),
+        ]),
+      );
+      const planned = await f.call<Meal>("plan_meal", {
+        recipeId: recipe.id,
+        date: "2026-10-23",
+        slot: "dinner",
+      });
+      const moved = await client.callTool({
+        name: "move_meal",
+        arguments: { id: planned.id, date: "2026-10-24" },
+      });
+      expect(moved.structuredContent).toMatchObject({
+        id: planned.id,
+        date: "2026-10-24",
+        ingredients: planned.ingredients,
+      });
       scopes = ["mcp:read"];
+      for (const [name, args] of [
+        ["add_recipe_note", { recipeId: recipe.id, body: "Nicht erlaubt" }],
+        ["move_meal", { id: planned.id, date: "2026-10-25" }],
+      ] as const) {
+        const denied = await client.callTool({ name, arguments: args });
+        expect(denied.isError).toBe(true);
+      }
+      const catalog = await f.call<Catalog>("get_catalog");
+      expect(catalog.recipes[0].comments).toHaveLength(2);
+      expect(catalog.meals[0].date).toBe("2026-10-24");
       const denied = await client.callTool({
         name: "create_cookbook",
         arguments: { name: "Nicht erlaubt" },
@@ -299,8 +410,8 @@ describe("Shared cookbooks and tips", () => {
         onSaved() {},
       }),
     );
-    expect(html).toContain("Tips &amp; comments");
-    expect(html).toContain("Add tip");
+    expect(html).toContain("Tips &amp; notes");
+    expect(html).toContain("Add note");
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>");
     const gallery = render(
